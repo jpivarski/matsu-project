@@ -126,7 +126,7 @@ if __name__ == "__main__":
         output.write("\n")
         output.close()
     else:
-        if useTemporaryFile:
+        if args.useTemporaryFile:
             tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
             tmpFile = open(tmpFileName, "w")
             geoPicture.serialize(tmpFile)
