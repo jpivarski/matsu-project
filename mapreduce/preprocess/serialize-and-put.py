@@ -6,6 +6,8 @@ import json
 import argparse
 import subprocess
 import re
+import os
+import random
 try:
     import ConfigParser as configparser
 except ImportError:
@@ -34,6 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("--bands", nargs="+", default=["B029", "B023", "B016"], help="list of bands to retrieve, like \"B029 B023 B016\" for Hyperion or \"B01 B02 B03 B04 B05 B06 B07 B08 B09 B10\" for ALI")
     parser.add_argument("--requireAllBands", action="store_true", help="if any bands are missing, skip this image; default is to simply ignore the missing bands and include the others")
     parser.add_argument("--toLocalFile", action="store_true", help="save the serialized result to a local file instead of HDFS")
+    parser.add_argument("--useTemporaryFile", action="store_true", help="save serialized result to a temporary file before loading it into HDFS")
     args = parser.parse_args()
 
     geoPicture = GeoPictureSerializer.GeoPicture()
@@ -119,7 +122,17 @@ if __name__ == "__main__":
         output.write("\n")
         output.close()
     else:
-        hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
-        geoPicture.serialize(hadoop.stdin)
-        hadoop.stdin.write("\n")
-        hadoop.stdin.close()
+        if useTemporaryFile:
+            tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+            tmpFile = open(tmpFileName, "w")
+            geoPicture.serialize(tmpFile)
+            tmpFile.write("\n")
+            tmpFile.close()
+            hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
+            sys.exit(hadoop.wait())
+        else:
+            hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
+            geoPicture.serialize(hadoop.stdin)
+            hadoop.stdin.write("\n")
+            hadoop.stdin.close()
+            sys.exit(hadoop.wait())
