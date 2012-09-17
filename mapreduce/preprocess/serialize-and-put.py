@@ -23,7 +23,7 @@ import GeoPictureSerializer
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    config.read("../CONFIG.ini")
+    config.read("../../CONFIG.ini")
 
     HADOOP = config.get("DEFAULT", "exe.hadoop")
 
@@ -37,6 +37,7 @@ if __name__ == "__main__":
     parser.add_argument("--requireAllBands", action="store_true", help="if any bands are missing, skip this image; default is to simply ignore the missing bands and include the others")
     parser.add_argument("--toLocalFile", action="store_true", help="save the serialized result to a local file instead of HDFS")
     parser.add_argument("--useTemporaryFile", action="store_true", help="save serialized result to a temporary file before loading it into HDFS")
+    parser.add_argument("--slice", default=None, help="select a slice of the image, rather than the whole thing (NOTE: this does not update the geographical data accordingly!)")
     args = parser.parse_args()
 
     geoPicture = GeoPictureSerializer.GeoPicture()
@@ -114,8 +115,11 @@ if __name__ == "__main__":
         band = tiffs[key].GetRasterBand(1).ReadAsArray()
         array[:,:,index] = (band * scaleFactor) + scaleOffset
 
-    geoPicture.picture = array
-
+    if args.slice is None:
+        geoPicture.picture = array
+    else:
+        geoPicture.picture = eval("array[%s]" % args.slice)
+        
     if args.toLocalFile:
         output = open(args.outputFilename, "w")
         geoPicture.serialize(output)
