@@ -50,7 +50,7 @@ def tileOffset(depth, longIndex, latIndex):
     "Returns the corner this tile occupies in its parent's frame."
     return longIndex % 2, latIndex % 2
 
-def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, layers=["RGB"], layerToBands={"RGB": ["B029", "B023", "B016"]}, layerToImageType={"RGB": "RGB"}, layerToMinRadiance={"RGB": 0.}, layerToMaxRadiance={"RGB": "95%"}):
+def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, configuration=[{"layer": "RGB", "bands": ["B029", "B023", "B016"], "outputType": "RGB", "minRadiance": 0., "maxRadiance": "sun"}]):
     """Performs the part of the reducing step of the Hadoop map-reduce job that depends on key-value input.
 
     Reduce key: tile coordinate and timestamp
@@ -61,21 +61,23 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
         * inputStream: usually sys.stdin; should be key-value pairs.
         * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
         * outputAccumulo: Java virtual machine containing AccumuloInterface classes
-        * bands: bands to combine as red, green, and blue
-        * layer: name of the layer
-        * minRadiance: radiance value to map to #00 (per channel)
-        * maxRadiance: radiance value to map to #FF (per channel)
+        * configuration: list of layer configurations with the following format
+                         {"layer": layerName, "bands", [band1, band2, band3], "outputType": "RGB", "yellow", etc.,
+                          "minRadiance": number or string percentage, "maxRadiance": number or string percentage}
+
+    If configuration is incorrectly formatted, the behavior is undefined.
     """
 
     while True:
         line = inputStream.readline()
         if not line: break
 
-        for layer in layers:
-            bands = layerToBands[layer]
-            imageType = layerToImageType[layer]
-            minRadiance = layerToMinRadiance[layer]
-            maxRadiance = layerToMaxRadiance[layer]
+        for config in configuration:
+            layer = config["layer"]
+            bands = config["bands"]
+            outputType = config["outputType"]
+            minRadiance = config["minRadiance"]
+            maxRadiance = config["maxRadiance"]
 
             if isinstance(minRadiance, basestring) and minRadiance[-1] == "%":
                 try:
@@ -111,7 +113,7 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
                 tiles[depth, longIndex, latIndex, layer] = (outputRed, outputGreen, outputBlue, outputMask)
             outputRed, outputGreen, outputBlue, outputMask = tiles[depth, longIndex, latIndex, layer]
 
-            if imageType == "RGB":
+            if outputType == "RGB":
                 red = geoPicture.picture[:,:,geoPicture.bands.index(bands[0])]
                 green = geoPicture.picture[:,:,geoPicture.bands.index(bands[1])]
                 blue = geoPicture.picture[:,:,geoPicture.bands.index(bands[2])]
@@ -196,7 +198,7 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
                 mask = numpy.minimum(numpy.maximum(geoPicture.picture[:,:,geoPicture.bands.index("MASK")] * 255, 0), 255)
                 condition = (mask > 0.5)
 
-                if imageType == "yellow":
+                if outputType == "yellow":
                     outputRed[condition] = b[condition]
                     outputGreen[condition] = b[condition]
                     outputMask[condition] = b[condition]
@@ -289,16 +291,14 @@ if __name__ == "__main__":
 
     AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
 
+    configuration = json.loads(sys.argv[1])
+    layers = [c["layer"] for c in configuration]
+
     tiles = {}
-    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface,
-                 layers=["RGB", "CO2"],
-                 layerToBands={"RGB": ["B029", "B023", "B016"], "CO2": ["CO2"]},
-                 layerToImageType={"RGB": "RGB", "CO2": "yellow"},
-                 layerToMinRadiance={"RGB": 0., "CO2": 0.},
-                 layerToMaxRadiance={"RGB": "sun", "CO2": 80.})
+    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface, configuration=configuration)
 
     for depth in xrange(10, 1, -1):
-        collate(depth, tiles, outputAccumulo=AccumuloInterface, layer="RGB")
-        collate(depth, tiles, outputAccumulo=AccumuloInterface, layer="CO2")
+        for layer in layers:
+            collate(depth, tiles, outputAccumulo=AccumuloInterface, layer=layer)
 
     AccumuloInterface.finishedWriting()
