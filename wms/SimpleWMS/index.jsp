@@ -117,9 +117,9 @@ window.onresize = doresize;
 function initialize() {
     var nodeList = document.querySelectorAll("input.layer-checkbox");
     for (var i in nodeList) {
-	if (nodeList[i].type == "checkbox") {
-	    nodeList[i].checked = (layers.indexOf(nodeList[i].id.substring(6)) != -1);
-	}
+        if (nodeList[i].type == "checkbox") {
+            nodeList[i].checked = (layers.indexOf(nodeList[i].id.substring(6)) != -1);
+        }
     }
     document.getElementById("show-points").checked = showPoints;
 
@@ -143,10 +143,10 @@ function initialize() {
 function getTable() {
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.onreadystatechange = function() {
-	if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
-	    alldata = JSON.parse(xmlhttp.responseText)["data"];
-	    drawTable();
-	}
+        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+            alldata = JSON.parse(xmlhttp.responseText)["data"];
+            drawTable();
+        }
     }
     xmlhttp.open("GET", "../TileServer/getTile?command=points", true);
     xmlhttp.send();
@@ -154,35 +154,35 @@ function getTable() {
 
 function drawTable(sortfield, numeric, increasing) {
     if (sortfield != null) {
-	var inmetadata = (sortfield != "latitude"  &&  sortfield != "longitude"  &&  sortfield != "time");
-	alldata.sort(function(a, b) {
-	    var aa, bb;
-	    if (inmetadata) {
-		aa = a["metadata"][sortfield];
-		bb = b["metadata"][sortfield];
-	    }
-	    else {
-		aa = a[sortfield];
-		bb = b[sortfield];
-	    }
+        var inmetadata = (sortfield != "latitude"  &&  sortfield != "longitude"  &&  sortfield != "time");
+        alldata.sort(function(a, b) {
+            var aa, bb;
+            if (inmetadata) {
+                aa = a["metadata"][sortfield];
+                bb = b["metadata"][sortfield];
+            }
+            else {
+                aa = a[sortfield];
+                bb = b[sortfield];
+            }
 
-	    if (numeric) {
-		if (increasing) {
-		    return aa - bb;
-		}
-		else {
-		    return bb - aa;
-		}
-	    }
-	    else {
-		if (increasing) {
-		    return aa > bb;
-		}
-		else {
-		    return bb > aa;
-		}
-	    }
-	});
+            if (numeric) {
+                if (increasing) {
+                    return aa - bb;
+                }
+                else {
+                    return bb - aa;
+                }
+            }
+            else {
+                if (increasing) {
+                    return aa > bb;
+                }
+                else {
+                    return bb > aa;
+                }
+            }
+        });
     }
 
     var fields = ["latitude", "longitude", "acquisition time"];
@@ -190,50 +190,50 @@ function drawTable(sortfield, numeric, increasing) {
     var rowtexts = [];
     
     for (var i in alldata) {
-	var evenOdd = "even";
-	if (i % 2 == 1) { evenOdd = "odd"; }
+        var evenOdd = "even";
+        if (i % 2 == 1) { evenOdd = "odd"; }
 
-	var row = alldata[i];
-	for (var m in row["metadata"]) {
-	    if (fields.indexOf(m) == -1) {
-		fields.push(m);
-	    }
-	}
+        var row = alldata[i];
+        for (var m in row["metadata"]) {
+            if (fields.indexOf(m) == -1) {
+                fields.push(m);
+            }
+        }
 
-	var func = "map.setCenter(new google.maps.LatLng(" + row["latitude"] + ", " + row["longitude"] + ")); map.setZoom(13);";
+        var func = "map.setCenter(new google.maps.LatLng(" + row["latitude"] + ", " + row["longitude"] + ")); map.setZoom(13);";
 
-	var rowtext = "<tr id=\"table-" + row["identifier"] + "\" class=\"row " + evenOdd + " clickablered\" onmouseup=\"" + func + "\">";
+        var rowtext = "<tr id=\"table-" + row["identifier"] + "\" class=\"row " + evenOdd + " clickablered\" onmouseup=\"" + func + "\">";
 
-	for (var fi in fields) {
-	    var f = fields[fi];
-	    var s;
-	    if (fi < 2) {
-		s = row[f];
-	    }
-	    else if (fi == 2) {
-		var d = new Date(1000 * row["time"]);
-		d.setMinutes(d.getMinutes() + d.getTimezoneOffset());  // get rid of any local timezone correction on the client's machine!
-		s = d.getFullYear() + "-" + (d.getMonth() + 1).pad(2) + "-" + d.getDate().pad(2) + " " + d.getHours().pad(2) + ":" + d.getMinutes().pad(2);
-	    }
-	    else {
-		s = row["metadata"][f];
-	    }
-	    rowtext += "<td class=\"cell\">" + s + "</td>";
+        for (var fi in fields) {
+            var f = fields[fi];
+            var s;
+            if (fi < 2) {
+                s = row[f];
+            }
+            else if (fi == 2) {
+                var d = new Date(1000 * row["time"]);
+                d.setMinutes(d.getMinutes() + d.getTimezoneOffset());  // get rid of any local timezone correction on the client's machine!
+                s = d.getFullYear() + "-" + (d.getMonth() + 1).pad(2) + "-" + d.getDate().pad(2) + " " + d.getHours().pad(2) + ":" + d.getMinutes().pad(2);
+            }
+            else {
+                s = row["metadata"][f];
+            }
+            rowtext += "<td class=\"cell\">" + s + "</td>";
 
-	    if (fi != 2  &&  !isNumber(s)  &&  nonNumericFields.indexOf(f) == -1) {
-		nonNumericFields.push(f);
-	    }
-	}
-	rowtext += "</tr>";
+            if (fi != 2  &&  !isNumber(s)  &&  nonNumericFields.indexOf(f) == -1) {
+                nonNumericFields.push(f);
+            }
+        }
+        rowtext += "</tr>";
 
-	rowtexts.push(rowtext);
+        rowtexts.push(rowtext);
     }
 
     var headerrow = "<tr class=\"row header\">";
     for (var fi in fields) {
-	var f = fields[fi];
-	var func = "drawTable('" + f + "', " + (nonNumericFields.indexOf(f) == -1) + ", " + (!increasing) + ");";
-	headerrow += "<td class=\"cell clickableblue\" onmouseup=\"" + func + "\">" + f + "</td>";
+        var f = fields[fi];
+        var func = "drawTable('" + f + "', " + (nonNumericFields.indexOf(f) == -1) + ", " + (!increasing) + ");";
+        headerrow += "<td class=\"cell clickableblue\" onmouseup=\"" + func + "\">" + f + "</td>";
     }
     headerrow += "</tr>\n";
     
@@ -268,17 +268,17 @@ function toggleState(name, objname) {
     var i = layers.indexOf(name);
 
     if (newState  &&  i == -1) {
-	layers.push(name);
+        layers.push(name);
     }
     else if (!newState  &&  i != -1) {
-	layers.splice(i, 1);
+        layers.splice(i, 1);
 
-	for (var key in overlays) {
-	    if (key.substring(16) == name) {
-		overlays[key].setMap(null);
-		delete overlays[key];
-	    }
-	}
+        for (var key in overlays) {
+            if (key.substring(16, 16 + name.length) == name) {
+                overlays[key].setMap(null);
+                delete overlays[key];
+            }
+        }
     }
 
     getOverlays();
@@ -290,17 +290,17 @@ function togglePoints(objname) {
     obj.checked = showPoints;
 
     if (showPoints) {
-	getLngLatPoints();
+        getLngLatPoints();
     }
     else {
-	for (var key in points) {
-	    points[key].setMap(null);
-	    delete points[key];
-	}
-	points = {};
-	oldsize = -2;
-	stats_numPoints = 0;
-	updateStatus();
+        for (var key in points) {
+            points[key].setMap(null);
+            delete points[key];
+        }
+        points = {};
+        oldsize = -2;
+        stats_numPoints = 0;
+        updateStatus();
     }
 }
 
@@ -332,18 +332,28 @@ function getOverlays() {
     stats_numVisible = 0;
     var numAdded = 0;
     for (var i in layers) {
-	for (var longIndex = longmin;  longIndex <= longmax;  longIndex++) {
+        for (var longIndex = longmin;  longIndex <= longmax;  longIndex++) {
             for (var latIndex = latmin;  latIndex <= latmax;  latIndex++) {
-		var key = tileName(depth, longIndex, latIndex, layers[i]);
-		if (!(key in overlays)) {
-                    var overlay = new google.maps.GroundOverlay("../TileServer/getTile?key=" + key, tileCorners(depth, longIndex, latIndex));
-                    overlay.setMap(map);
-                    overlays[key] = overlay;
-                    numAdded++;
-		}
-		stats_numVisible++;
+                var xmlhttp = new XMLHttpRequest();
+                xmlhttp.onreadystatechange = function(x, d, lng, lat) { return function() {
+                    if (x.readyState == 4  &&  x.status == 200) {
+                        var keys = JSON.parse(x.responseText)["data"];
+                        for (var key in keys) {
+                            if (!(key in overlays)) {
+                                var overlay = new google.maps.GroundOverlay("../TileServer/getTile?key=" + key, tileCorners(d, lng, lat));
+                                overlay.setMap(map);
+                                overlays[key] = overlay;
+                                numAdded++;
+                            }
+                            stats_numVisible++;
+                        }
+                    }
+                } }(xmlhttp, depth, longIndex, latIndex);
+                var url = "../TileServer/getTile?command=imageList&key=" + tileName(depth, longIndex, latIndex, layers[i]) + "";  // TODO: timemin, timemax
+                xmlhttp.open("GET", url, true);
+                xmlhttp.send();
             }
-	}
+        }
     }
 
     stats_numInMemory = 0;
@@ -359,26 +369,26 @@ function getLngLatPoints() {
     var depth = map.getZoom() - 2;
     var size = 0;
     if (depth <= 9) {
-	circle.size = new google.maps.Size(18, 18);
-	circle.scaledSize = new google.maps.Size(18, 18);
-	circle.anchor = new google.maps.Point(9, 9);
-	if (depth <= crossover) {
-	    size = -1;
-	}
+        circle.size = new google.maps.Size(18, 18);
+        circle.scaledSize = new google.maps.Size(18, 18);
+        circle.anchor = new google.maps.Point(9, 9);
+        if (depth <= crossover) {
+            size = -1;
+        }
     }
     else {
-	size = Math.pow(2, depth - 10);
-	circle.size = new google.maps.Size(36 * size, 36 * size);
-	circle.scaledSize = new google.maps.Size(36 * size, 36 * size);
-	circle.anchor = new google.maps.Point(18 * size, 18 * size);
+        size = Math.pow(2, depth - 10);
+        circle.size = new google.maps.Size(36 * size, 36 * size);
+        circle.scaledSize = new google.maps.Size(36 * size, 36 * size);
+        circle.anchor = new google.maps.Point(18 * size, 18 * size);
     }
 
     if (oldsize != size) {
-	for (var key in points) {
-	    points[key].setMap(null);
-	    delete points[key];
-	}
-	points = {};
+        for (var key in points) {
+            points[key].setMap(null);
+            delete points[key];
+        }
+        points = {};
     }
     oldsize = size;
 
@@ -392,50 +402,50 @@ function getLngLatPoints() {
 
     var url;
     if (size != -1) {
-	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax;
+        url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax;
     }
     else {
-	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover;
+        url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover;
     }
 
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.onreadystatechange = function() {
-	if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
-	    var data = JSON.parse(xmlhttp.responseText)["data"];
-	    for (var i in data) {
-		var identifier = data[i]["identifier"];
-		if (!(identifier in points)) {
-		    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
+        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+            var data = JSON.parse(xmlhttp.responseText)["data"];
+            for (var i in data) {
+                var identifier = data[i]["identifier"];
+                if (!(identifier in points)) {
+                    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
 
-		    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
-			var obj = document.getElementById("table-" + ident);
-			obj.style.background = "#ffff00";
-			sidebar.scrollTop = obj.offsetTop;
+                    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
+                        var obj = document.getElementById("table-" + ident);
+                        obj.style.background = "#ffff00";
+                        sidebar.scrollTop = obj.offsetTop;
 
-			var countdown = 10;
-			var state = true;
-			var callme = function() {
-			    if (state) {
-				obj.style.background = null;
-				state = false;
-			    }
-			    else {
-				obj.style.background = "#ffff00";
-				state = true;
-			    }
+                        var countdown = 10;
+                        var state = true;
+                        var callme = function() {
+                            if (state) {
+                                obj.style.background = null;
+                                state = false;
+                            }
+                            else {
+                                obj.style.background = "#ffff00";
+                                state = true;
+                            }
 
-			    countdown--;
-			    if (countdown >= 0) { setTimeout(callme, 200); }
-			};
-			setTimeout(callme, 200);
+                            countdown--;
+                            if (countdown >= 0) { setTimeout(callme, 200); }
+                        };
+                        setTimeout(callme, 200);
 
-		    } }(identifier));
-		}
-	    }
+                    } }(identifier));
+                }
+            }
 
-	    stats_numPoints = Object.size(points);
-	    updateStatus();
-	}
+            stats_numPoints = Object.size(points);
+            updateStatus();
+        }
     }
     xmlhttp.open("GET", url, true);
     xmlhttp.send();

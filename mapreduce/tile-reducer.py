@@ -50,7 +50,7 @@ def tileOffset(depth, longIndex, latIndex):
     "Returns the corner this tile occupies in its parent's frame."
     return longIndex % 2, latIndex % 2
 
-def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, configuration=[{"layer": "RGB", "bands": ["B029", "B023", "B016"], "outputType": "RGB", "minRadiance": 0., "maxRadiance": "sun"}]):
+def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, mergeTimestamps=False, configuration=[{"layer": "RGB", "bands": ["B029", "B023", "B016"], "outputType": "RGB", "minRadiance": 0., "maxRadiance": "sun"}]):
     """Performs the part of the reducing step of the Hadoop map-reduce job that depends on key-value input.
 
     Reduce key: tile coordinate and timestamp
@@ -61,6 +61,8 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
         * inputStream: usually sys.stdin; should be key-value pairs.
         * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
         * outputAccumulo: Java virtual machine containing AccumuloInterface classes
+        * mergeTimestamps: if False, timestamp is part of the key and images from different times are separate;
+                           if True, images of the same place from different times are overlaid into a single image
         * configuration: list of layer configurations with the following format
                          {"layer": layerName, "bands", [band1, band2, band3], "outputType": "RGB", "yellow", etc.,
                           "minRadiance": number or string percentage, "maxRadiance": number or string percentage}
@@ -104,14 +106,19 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
             except IOError:
                 continue
 
-            if (depth, longIndex, latIndex, layer) not in tiles:
+            if mergeTimestamps:
+                outputKey = depth, longIndex, latIndex, layer
+            else:
+                outputKey = depth, longIndex, latIndex, layer, timestamp
+
+            if outputKey not in tiles:
                 shape = geoPicture.picture.shape[:2]
                 outputRed = numpy.zeros(shape, dtype=numpy.uint8)
                 outputGreen = numpy.zeros(shape, dtype=numpy.uint8)
                 outputBlue = numpy.zeros(shape, dtype=numpy.uint8)
                 outputMask = numpy.zeros(shape, dtype=numpy.uint8)
-                tiles[depth, longIndex, latIndex, layer] = (outputRed, outputGreen, outputBlue, outputMask)
-            outputRed, outputGreen, outputBlue, outputMask = tiles[depth, longIndex, latIndex, layer]
+                tiles[outputKey] = (outputRed, outputGreen, outputBlue, outputMask)
+            outputRed, outputGreen, outputBlue, outputMask = tiles[outputKey]
 
             if outputType == "RGB":
                 red = geoPicture.picture[:,:,geoPicture.bands.index(bands[0])]
@@ -206,13 +213,18 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
                 else:
                     raise NotImplementedError
 
+            if mergeTimestamps:
+                outputKey = "%s-%s" % (tileName(depth, longIndex, latIndex), layer)
+            else:
+                outputKey = "%s-%s-%d" % (tileName(depth, longIndex, latIndex), layer, timestamp)
+
             image = Image.fromarray(numpy.dstack((outputRed, outputGreen, outputBlue, outputMask)))
             if outputDirectory is not None:
-                image.save("%s/%s.png" % (outputDirectory, tileName(depth, longIndex, latIndex)), "PNG", options="optimize")
+                image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write("%s-%s" % (tileName(depth, longIndex, latIndex), layer), "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{}", buff.getvalue())
 
 def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB", splineOrder=3):
     """Performs the part of the reducing step of the Hadoop map-reduce job after all data have been collected.
@@ -226,21 +238,36 @@ def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB"
         * layer: name of the layer
         * splineOrder: order of the spline used to calculate the affine_transformation (see SciPy docs); must be between 0 and 5
     """
+    
+    for key in tiles.keys():
+        if len(key) == 4:
+            mergeTimestamps = False
+            depthIndex, longIndex, latIndex, l = key
+        elif len(key) == 5:
+            mergeTimestamps = True
+            depthIndex, longIndex, latIndex, l, timestamp = key
+        else: raise Exception("Somehow the key structure broke mid-processing...")
 
-    for depthIndex, longIndex, latIndex, l in tiles.keys():
         if l == layer and depthIndex == depth:
             parentDepth, parentLongIndex, parentLatIndex = tileParent(depthIndex, longIndex, latIndex)
-            if (parentDepth, parentLongIndex, parentLatIndex, layer) not in tiles:
-                shape = tiles[depthIndex, longIndex, latIndex, layer][0].shape
+
+            if mergeTimestamps:
+                outputKey = parentDepth, parentLongIndex, parentLatIndex, layer
+            else:
+                outputKey = parentDepth, parentLongIndex, parentLatIndex, layer, timestamp
+
+            if outputKey not in tiles:
+                shape = tiles[key][0].shape
                 outputRed = numpy.zeros(shape, dtype=numpy.uint8)
                 outputGreen = numpy.zeros(shape, dtype=numpy.uint8)
                 outputBlue = numpy.zeros(shape, dtype=numpy.uint8)
                 outputMask = numpy.zeros(shape, dtype=numpy.uint8)
-                tiles[parentDepth, parentLongIndex, parentLatIndex, layer] = outputRed, outputGreen, outputBlue, outputMask
-            outputRed, outputGreen, outputBlue, outputMask = tiles[parentDepth, parentLongIndex, parentLatIndex, layer]
+                tiles[outputKey] = outputRed, outputGreen, outputBlue, outputMask
+
+            outputRed, outputGreen, outputBlue, outputMask = tiles[outputKey]
             rasterYSize, rasterXSize = outputRed.shape
 
-            inputRed, inputGreen, inputBlue, inputMask = tiles[depthIndex, longIndex, latIndex, layer]
+            inputRed, inputGreen, inputBlue, inputMask = tiles[key]
 
             trans = numpy.matrix([[2., 0.], [0., 2.]])
             offset = 0., 0.
@@ -265,13 +292,18 @@ def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB"
             outputBlue[latSlice,longSlice] = inputBlue[0:rasterYSize/2,0:rasterXSize/2]
             outputMask[latSlice,longSlice] = inputMask[0:rasterYSize/2,0:rasterXSize/2]
 
+            if mergeTimestamps:
+                outputKey = "%s-%s" % (tileName(parentDepth, parentLongIndex, parentLatIndex), layer)
+            else:
+                outputKey = "%s-%s-%d" % (tileName(parentDepth, parentLongIndex, parentLatIndex), layer, timestamp)
+
             image = Image.fromarray(numpy.dstack((outputRed, outputGreen, outputBlue, outputMask)))
             if outputDirectory is not None:
-                image.save("%s/%s.png" % (outputDirectory, tileName(parentDepth, parentLongIndex, parentLatIndex)), "PNG", options="optimize")
+                image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write("%s-%s" % (tileName(parentDepth, parentLongIndex, parentLatIndex), layer), "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{}", buff.getvalue())
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
@@ -295,7 +327,7 @@ if __name__ == "__main__":
     layers = [c["layer"] for c in configuration]
 
     tiles = {}
-    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface, configuration=configuration)
+    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface, mergeTimestamps=False, configuration=configuration)
 
     for depth in xrange(10, 1, -1):
         for layer in layers:
