@@ -81,9 +81,48 @@ public class MatsuServlet extends HttpServlet {
 	else if (command.equals("image")) {
 	    getImage(request, response);
 	}
+	else if (command.equals("imageList")) {
+	    getImageList(request, response);
+	}
 	else if (command.equals("points")) {
 	    getPoints(request, response);
 	}
+    }
+
+    protected void getImageList(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    	if (zooKeeperInstance == null  ||  connector == null) { return; }
+
+    	Scanner scanner;
+    	try {
+    	    scanner = connector.createScanner(imageTableName, Constants.NO_AUTHS);
+    	}
+    	catch (TableNotFoundException exception) {
+    	    return;
+    	}
+
+    	String key = request.getParameter("key");
+    	if (key == null) { return; }
+
+        String timemin = request.getParameter("timemin");
+        if (timemin == null) { timemin = "0000000000"; }
+
+        String timemax = request.getParameter("timemax");
+        if (timemax == null) { timemax = "9999999999"; }
+
+    	scanner.setRange(new Range(key + "-" + timemin, key + "-" + timemax));
+
+        PrintWriter output = response.getWriter();
+	output.print("[");
+	String comma = "";
+        for (Entry<Key, Value> entry : scanner) {
+            String rowName = entry.getKey().getRow().toString();
+            String columnName = entry.getKey().getColumnQualifier().toString();
+            if (columnName.equals("l2png")) {
+                output.print(String.format("%s\"%s\"", comma, rowName));
+                comma = ",";
+            }
+        }
+        output.println("]");
     }
 
     protected void getImage(HttpServletRequest request, HttpServletResponse response) throws IOException {
