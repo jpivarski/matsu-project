@@ -241,10 +241,10 @@ def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB"
     
     for key in tiles.keys():
         if len(key) == 4:
-            mergeTimestamps = False
+            mergeTimestamps = True
             depthIndex, longIndex, latIndex, l = key
         elif len(key) == 5:
-            mergeTimestamps = True
+            mergeTimestamps = False
             depthIndex, longIndex, latIndex, l, timestamp = key
         else: raise Exception("Somehow the key structure broke mid-processing...")
 
