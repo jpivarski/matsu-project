@@ -11,6 +11,7 @@
         <javac srcdir="src" destdir="build" includeantruntime="false">
             <classpath>
                 <pathelement location="/usr/lib/hadoop/hadoop-common.jar" />
+		<pathelement location="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" />
             </classpath>
         </javac>
     </target>
@@ -25,6 +26,8 @@
             <zipfileset src="/usr/lib/hadoop/hadoop-auth.jar" includes="**/*.class" />
             <zipfileset src="/usr/lib/hadoop/lib/slf4j-api-1.6.1.jar" includes="**/*.class" />
             <zipfileset src="/usr/lib/hadoop/lib/avro-1.5.4.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/log4j-1.2.15.jar" includes="**/*.class" />
         </jar>
     </target>
 </project>

@@ -53,7 +53,7 @@ public class SequenceFileInterface {
         writer = new SequenceFile.Writer(fileSystem, configuration, new Path(fileName), Text.class, Text.class);
     }
 
-    public static void write(String key, String value) throws IOException {
+    public static void write(String key, byte[] value) throws IOException {
         if (writer == null) { throw new IOException(); }
         writer.append(new Text(key), new Text(value));
     }

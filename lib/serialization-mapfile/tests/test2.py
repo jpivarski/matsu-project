@@ -7,8 +7,8 @@ jpype.startJVM(jvmpath, "-Djava.class.path=%s" % classpath)
 SequenceFileInterface = jpype.JClass("org.occ.matsu.SequenceFileInterface")
 
 # SequenceFileInterface.openForWriting("test.sequencefile")
-# for x in xrange(100):
-#     SequenceFileInterface.write(str(x), str(x))
+# for x in xrange(256):
+#     SequenceFileInterface.write(str(x), chr(x) + chr(x) + chr(x) + chr(x) + chr(x))
 # SequenceFileInterface.closeWriting()
 
 # jpype.shutdownJVM()
@@ -19,4 +19,4 @@ while True:
     result = SequenceFileInterface.readNext()
     if result is None: break
     key, value = result
-    print key, value
+    print key, [ord(x) for x in value], ">%s<" % value

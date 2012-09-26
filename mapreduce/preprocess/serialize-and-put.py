@@ -38,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("--toLocalFile", action="store_true", help="save the serialized result to a local file instead of HDFS")
     parser.add_argument("--useTemporaryFile", action="store_true", help="save serialized result to a temporary file before loading it into HDFS")
     parser.add_argument("--slice", default=None, help="select a slice of the image, rather than the whole thing (NOTE: this does not update the geographical data accordingly!)")
+    parser.add_argument("--sequenceFile", action="store_true", help="save to a Hadoop SequenceFile of individually-serialized bands, which allows for skipping over bands in map-reduce")
     args = parser.parse_args()
 
     geoPicture = GeoPictureSerializer.GeoPicture()
@@ -119,24 +120,56 @@ if __name__ == "__main__":
         geoPicture.picture = array
     else:
         geoPicture.picture = eval("array[%s]" % args.slice)
-        
-    if args.toLocalFile:
-        output = open(args.outputFilename, "w")
-        geoPicture.serialize(output)
-        output.write("\n")
-        output.close()
-    else:
-        if args.useTemporaryFile:
+    
+    if args.sequenceFile:
+        import jpype   # only start a JVM if you're going to use SequenceFiles
+        classpath = "../../lib/serialization-mapfile/matsuSequenceFileInterface.jar"
+        jvmpath = "/usr/lib/jvm/java-6-sun/jre/lib/amd64/server/libjvm.so"
+        jpype.startJVM(jvmpath, "-Djava.class.path=%s" % classpath)
+        SequenceFileInterface = jpype.JClass("org.occ.matsu.SequenceFileInterface")
+
+        if args.toLocalFile:
+            SequenceFileInterface.openForWriting(args.outputFilename)
+
+        elif args.useTemporaryFile:
             tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
-            tmpFile = open(tmpFileName, "w")
-            geoPicture.serialize(tmpFile)
-            tmpFile.write("\n")
-            tmpFile.close()
-            hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
-            sys.exit(hadoop.wait())
+            SequenceFileInterface.openForWriting(tmpFileName)
+
         else:
-            hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
-            geoPicture.serialize(hadoop.stdin)
-            hadoop.stdin.write("\n")
-            hadoop.stdin.close()
-            sys.exit(hadoop.wait())
+            pass  # HERE (handle direct-to-Hadoop)
+
+        for index, band in enumerate(geoPicture.bands):
+            oneBandPicture = GeoPictureSerializer.GeoPicture()
+            oneBandPicture.metadata = geoPicture.metadata
+            oneBandPicture.bands = [band]
+            oneBandPicture.picture = numpy.reshape(geoPicture.picture[:,:,index], (sampletiff.RasterYSize, sampletiff.RasterXSize, 1))
+
+            SequenceFileInterface.write(band, oneBandPicture.serialize())
+
+        SequenceFileInterface.closeWriting()
+        jpype.shutdownJVM()
+
+        if args.useTemporaryFile:
+            pass  # HERE (handle copy of temporary file)
+
+    else:
+        if args.toLocalFile:
+            output = open(args.outputFilename, "w")
+            geoPicture.serialize(output)
+            output.write("\n")
+            output.close()
+        else:
+            if args.useTemporaryFile:
+                tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+                tmpFile = open(tmpFileName, "w")
+                geoPicture.serialize(tmpFile)
+                tmpFile.write("\n")
+                tmpFile.close()
+                hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
+                sys.exit(hadoop.wait())
+            else:
+                hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
+                geoPicture.serialize(hadoop.stdin)
+                hadoop.stdin.write("\n")
+                hadoop.stdin.close()
+                sys.exit(hadoop.wait())
