@@ -1,5 +1,7 @@
 package org.occ.matsu;
 
+import java.util.List;
+import java.util.ArrayList;
 import java.net.URI;
 import java.io.IOException;
 
@@ -10,26 +12,35 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.io.Text;
 
 public class SequenceFileInterface {
+    static List<String> shoppingList;
     static SequenceFile.Reader reader = null;
     static SequenceFile.Writer writer = null;
 
-    public static void openForReading(String fileName) throws IOException {
+    public static void openForReading(String fileName, String[] requestedItems) throws IOException {
         Configuration configuration = new Configuration();
         configuration.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
         FileSystem fileSystem = FileSystem.getLocal(configuration);
         reader = new SequenceFile.Reader(fileSystem, new Path(fileName), configuration);
+
+        shoppingList = new ArrayList<String>(requestedItems.length);
+        for (String item : requestedItems) {
+            shoppingList.add(item);
+        }
     }
 
-    public static String read(String key) throws IOException {
+    public static String[] readNext() throws IOException {
         if (reader == null) { throw new IOException(); }
 
-        reader.sync(0);
-        Text testkey = new Text();
-        while (reader.next(testkey)) {
-            if (testkey.toString().equals(key)) {
+        Text key = new Text();
+        while (reader.next(key)) {
+            if (shoppingList.contains(key.toString())) {
                 Text value = new Text();
                 reader.getCurrentValue(value);
-                return value.toString();
+
+                String[] output = new String[2];
+                output[0] = key.toString();
+                output[1] = value.toString();
+                return output;
             }
         }
         return null;
