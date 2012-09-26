@@ -1,6 +1,6 @@
 import jpype
 
-classpath = "matsuSequenceFileInterface.jar"
+classpath = "../matsuSequenceFileInterface.jar"
 # jvmpath = jpype.getDefaultJVMPath()
 jvmpath = "/usr/lib/jvm/java-6-sun/jre/lib/amd64/server/libjvm.so"
 

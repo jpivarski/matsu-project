@@ -47,6 +47,11 @@ public class SequenceFileInterface {
         writer.append(new Text(key), new Text(value));
     }
 
+    public static void sync() throws IOException {
+        if (writer == null) { throw new IOException(); }
+        writer.sync();
+    }
+
     public static void closeWriting() throws IOException {
         if (writer == null) { throw new IOException(); }
         writer.close();
