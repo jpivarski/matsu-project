@@ -1,0 +1,30 @@
+<project default="jar">
+    <property file="../../CONFIG.ini" />
+
+    <target name="clean">
+        <delete dir="build" />
+        <delete file="matsuSequenceFileInterface.jar" />
+    </target>
+
+    <target name="compile">
+        <mkdir dir="build" />
+        <javac srcdir="src" destdir="build" includeantruntime="false">
+            <classpath>
+                <pathelement location="/usr/lib/hadoop/hadoop-common.jar" />
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile">
+        <jar jarfile="matsuSequenceFileInterface.jar" basedir="build">
+            <zipfileset src="/usr/lib/hadoop/hadoop-common.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/commons-logging-api-1.1.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/commons-configuration-1.6.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/guava-11.0.2.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/commons-lang-2.5.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/hadoop-auth.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/slf4j-api-1.6.1.jar" includes="**/*.class" />
+            <zipfileset src="/usr/lib/hadoop/lib/avro-1.5.4.jar" includes="**/*.class" />
+        </jar>
+    </target>
+</project>
