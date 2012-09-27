@@ -101,15 +101,15 @@ if __name__ == "__main__":
         if "SCALING_FACTOR_VNIR" in radianceScaling:   # if Hyperion:
             scaleOffset = 0.
             if bandNumber <= 70:
-                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_VNIR"])
+                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_VNIR"])   # SCALING_FACTOR_VNIR is always 40
             else:
-                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_SWIR"])
+                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_SWIR"])   # SCALING_FACTOR_SWIR is always 80
 
         else:   # else ALI:
             scaleOffset = 0.
-            scaleFactor = 1./300.  # from the EO-1 User Guide Version 2.3, FAQ on ALI
+            scaleFactor = 1./30.  # from the EO-1 User Guide Version 2.3, FAQ on ALI.  The factor is 30 instead of 300 because 300 would give us mW/cm/cm/sr/micron when we want W/m/m/sr/micron for consistency with Hyperion
 
-            ### According to (my uncertain reading of) the User Guide, these corrections were already applied in the Level-0 to Level-1 step:
+            ### According to (my uncertain reading of) the User Guide, these corrections were already applied in the Level-0 to Level-1 step and should not be applied again:
             # scaleOffset = float(radianceScaling["BAND%d_OFFSET" % bandNumber])
             # scaleFactor = 1./float(radianceScaling["BAND%d_SCALING_FACTOR" % bandNumber])
 
