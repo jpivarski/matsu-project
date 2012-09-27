@@ -50,7 +50,7 @@ def tileOffset(depth, longIndex, latIndex):
     "Returns the corner this tile occupies in its parent's frame."
     return longIndex % 2, latIndex % 2
 
-def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, mergeTimestamps=False, configuration=[{"layer": "RGB", "bands": ["B029", "B023", "B016"], "outputType": "RGB", "minRadiance": 0., "maxRadiance": "sun"}]):
+def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, outputStream=None, mergeTimestamps=False, configuration=[{"layer": "RGB", "bands": ["B029", "B023", "B016"], "outputType": "RGB", "minRadiance": 0., "maxRadiance": "sun"}]):
     """Performs the part of the reducing step of the Hadoop map-reduce job that depends on key-value input.
 
     Reduce key: tile coordinate and timestamp
@@ -59,8 +59,9 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
 
         * tiles: dictionary of tiles built up by this procedure (this function adds to tiles)
         * inputStream: usually sys.stdin; should be key-value pairs.
-        * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
         * outputAccumulo: Java virtual machine containing AccumuloInterface classes
+        * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
+        * outputStream: if not None, write key\tbase64(value) pairs on this output stream
         * mergeTimestamps: if False, timestamp is part of the key and images from different times are separate;
                            if True, images of the same place from different times are overlaid into a single image
         * configuration: list of layer configurations with the following format
@@ -219,22 +220,27 @@ def reduce_tiles(tiles, inputStream, outputDirectory=None, outputAccumulo=None, 
                 outputKey = "%s-%s-%d" % (tileName(depth, longIndex, latIndex), layer, timestamp)
 
             image = Image.fromarray(numpy.dstack((outputRed, outputGreen, outputBlue, outputMask)))
-            if outputDirectory is not None:
-                image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
                 outputAccumulo.write(outputKey, "{}", buff.getvalue())
+            if outputDirectory is not None:
+                image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
+            if outputStream is not None:
+                buff = BytesIO()
+                image.save(buff, "PNG", options="optimize")
+                outputStream.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
-def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB", splineOrder=3):
+def collate(depth, tiles, outputAccumulo=None, outputDirectory=None, outputStream=None, layer="RGB", splineOrder=3):
     """Performs the part of the reducing step of the Hadoop map-reduce job after all data have been collected.
 
     Actions: combine deep images to produce more shallow images.
 
         * depth: depth of input images; output images have (depth - 1)
         * tiles: dictionary of tiles built up by this procedure (this function adds to tiles)
-        * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
         * outputAccumulo: Java virtual machine containing AccumuloInterface classes
+        * outputDirectory: local filesystem directory for debugging output (usually the output goes to Accumulo)
+        * outputStream: if not None, write key\tbase64(value) pairs on this output stream
         * layer: name of the layer
         * splineOrder: order of the spline used to calculate the affine_transformation (see SciPy docs); must be between 0 and 5
     """
@@ -304,33 +310,59 @@ def collate(depth, tiles, outputDirectory=None, outputAccumulo=None, layer="RGB"
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
                 outputAccumulo.write(outputKey, "{}", buff.getvalue())
+            if outputStream is not None:
+                buff = BytesIO()
+                image.save(buff, "PNG", options="optimize")
+                outputStream.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(["../CONFIG.ini", "CONFIG.ini"])
 
-    JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
+    zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
+    zoomDepthWidest = int(config.get("DEFAULT", "mapreduce.zoomDepthWidest"))
+    if zoomDepthWidest >= zoomDepthNarrowest:
+        raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 
-    ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
-    ACCUMULO_DB_NAME = config.get("DEFAULT", "accumulo.db_name")
-    ZOOKEEPER_LIST = config.get("DEFAULT", "accumulo.zookeeper_list")
-    ACCUMULO_USER_NAME = config.get("DEFAULT", "accumulo.user_name")
-    ACCUMULO_PASSWORD = config.get("DEFAULT", "accumulo.password")
-    ACCUMULO_TABLE_NAME = config.get("DEFAULT", "accumulo.table_name")
-
-    jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
-    AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
-
-    AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
-
-    configuration = json.loads(sys.argv[1])
+    configuration = json.loads(config.get("DEFAULT", "reducer.configuration"))
     layers = [c["layer"] for c in configuration]
 
+    mergeTimestamps = (config.get("DEFAULT", "reducer.mergeTimestamps").lower() == "true")
+    outputToAccumulo = (config.get("DEFAULT", "reducer.outputToAccumulo").lower() == "true")
+    outputToLocalDirectory = (config.get("DEFAULT", "reducer.outputToLocalDirectory").lower() == "true")
+    outputDirectoryName = config.get("DEFAULT", "reducer.outputDirectoryName")
+    if not outputToLocalDirectory:
+        outputDirectoryName = None
+    outputToStdOut = (config.get("DEFAULT", "reducer.outputToStdOut").lower() == "true")
+    if outputToStdOut:
+        outputStream = sys.stdout
+    else:
+        outputStream = None
+
+    if outputToAccumulo:
+        JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
+
+        ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
+        ACCUMULO_DB_NAME = config.get("DEFAULT", "accumulo.db_name")
+        ZOOKEEPER_LIST = config.get("DEFAULT", "accumulo.zookeeper_list")
+        ACCUMULO_USER_NAME = config.get("DEFAULT", "accumulo.user_name")
+        ACCUMULO_PASSWORD = config.get("DEFAULT", "accumulo.password")
+        ACCUMULO_TABLE_NAME = config.get("DEFAULT", "accumulo.table_name")
+
+        jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
+        AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
+
+        AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
+
+    else:
+        AccumuloInterface = None
+
     tiles = {}
-    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface, mergeTimestamps=False, configuration=configuration)
+    reduce_tiles(tiles, sys.stdin, outputAccumulo=AccumuloInterface, outputDirectory=outputDirectoryName, outputStream=outputStream, mergeTimestamps=mergeTimestamps, configuration=configuration)
 
-    for depth in xrange(10, 1, -1):
+    for depth in xrange(zoomDepthNarrowest, zoomDepthWidest, -1):
         for layer in layers:
-            collate(depth, tiles, outputAccumulo=AccumuloInterface, layer=layer)
+            collate(depth, tiles, outputAccumulo=AccumuloInterface, outputDirectory=outputDirectoryName, outputStream=outputStream, layer=layer)
 
-    AccumuloInterface.finishedWriting()
+    if outputToAccumulo:
+        AccumuloInterface.finishedWriting()
