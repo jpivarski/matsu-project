@@ -138,9 +138,13 @@ if __name__ == "__main__":
         else:
             pass  # HERE (handle direct-to-Hadoop)
 
+        SequenceFileInterface.write("metadata", json.dumps(geoPicture.metadata))
+        SequenceFileInterface.write("bands", json.dumps(geoPicture.bands))
+        SequenceFileInterface.write("shape", json.dumps(geoPicture.picture.shape))
+
         for index, band in enumerate(geoPicture.bands):
             oneBandPicture = GeoPictureSerializer.GeoPicture()
-            oneBandPicture.metadata = geoPicture.metadata
+            oneBandPicture.metadata = {}
             oneBandPicture.bands = [band]
             oneBandPicture.picture = numpy.reshape(geoPicture.picture[:,:,index], (sampletiff.RasterYSize, sampletiff.RasterXSize, 1))
 
