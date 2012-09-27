@@ -8,6 +8,10 @@ import java.lang.Long;
 import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+
 import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.ZooKeeperInstance;
 import org.apache.accumulo.core.client.Connector;
@@ -81,11 +85,25 @@ public class MatsuServlet extends HttpServlet {
 	else if (command.equals("image")) {
 	    getImage(request, response);
 	}
+	else if (command.equals("images")) {
+	    getImages(request, response);
+	}
 	else if (command.equals("imageList")) {
 	    getImageList(request, response);
 	}
 	else if (command.equals("points")) {
 	    getPoints(request, response);
+	}
+	else if (command.equals("test")) {
+	    PrintWriter output = response.getWriter();
+	    output.println("I'm alive.");
+	    output.println(zooKeeperInstance.toString());
+	    if (connector != null) {
+		output.println(connector.toString());
+	    }
+	    else {
+		output.println("connector is null");
+	    }
 	}
     }
 
@@ -156,6 +174,54 @@ public class MatsuServlet extends HttpServlet {
     		break;
     	    }
     	}
+    }
+
+    protected void getImages(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    	if (zooKeeperInstance == null  ||  connector == null) { return; }
+
+    	Scanner scanner;
+    	try {
+    	    scanner = connector.createScanner(imageTableName, Constants.NO_AUTHS);
+    	}
+    	catch (TableNotFoundException exception) {
+    	    return;
+    	}
+
+    	String key = request.getParameter("key");
+    	if (key == null) { return; }
+
+        String timemin = request.getParameter("timemin");
+        if (timemin == null) { timemin = "0000000000"; }
+
+        String timemax = request.getParameter("timemax");
+        if (timemax == null) { timemax = "9999999999"; }
+
+    	scanner.setRange(new Range(key + "-" + timemin, key + "-" + timemax));
+
+	BufferedImage allImages = null;
+        for (Entry<Key, Value> entry : scanner) {
+            String columnName = entry.getKey().getColumnQualifier().toString();
+            if (columnName.equals("l2png")) {
+		byte[] l2png = entry.getValue().get();
+
+		BufferedImage thisImage = ImageIO.read(new ByteArrayInputStream(l2png));
+		if (allImages == null) {
+		    allImages = thisImage;
+		}
+		else {
+		    allImages.getGraphics().drawImage(thisImage, 0, 0, null);
+		}
+            }
+        }
+
+	if (allImages != null) {
+	    response.setContentType("image/png");
+	    // response.setContentLength(?);
+	    ServletOutputStream servletOutputStream = response.getOutputStream();
+	    ImageIO.write(allImages, "PNG", servletOutputStream);
+	    servletOutputStream.close();
+	}
+
     }
 
     protected boolean getPoints_writeOne(PrintWriter output, String lastrow, double longitude, double latitude, String metadata, String comma, long timemin, long timemax, int groupdepth, Set<String> seen) {

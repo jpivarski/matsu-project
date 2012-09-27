@@ -32,6 +32,7 @@
 	    <fileset dir="./">
 		<include name="**/*.jsp"/>
 		<include name="**/*.css"/>
+		<include name="**/*.js"/>
 		<include name="**/*.png"/>
 		<include name="**/*.jpg"/>
 		<include name="**/*.html"/>
