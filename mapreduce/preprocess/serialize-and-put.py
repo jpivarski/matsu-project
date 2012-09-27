@@ -38,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("--toLocalFile", action="store_true", help="save the serialized result to a local file instead of HDFS")
     parser.add_argument("--useTemporaryFile", action="store_true", help="save serialized result to a temporary file before loading it into HDFS")
     parser.add_argument("--slice", default=None, help="select a slice of the image, rather than the whole thing (NOTE: this does not update the geographical data accordingly!)")
+    parser.add_argument("--sequenceFile", action="store_true", help="save to a Hadoop SequenceFile of individually-serialized bands, which allows for skipping over bands in map-reduce")
     args = parser.parse_args()
 
     geoPicture = GeoPictureSerializer.GeoPicture()
@@ -100,15 +101,15 @@ if __name__ == "__main__":
         if "SCALING_FACTOR_VNIR" in radianceScaling:   # if Hyperion:
             scaleOffset = 0.
             if bandNumber <= 70:
-                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_VNIR"])
+                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_VNIR"])   # SCALING_FACTOR_VNIR is always 40
             else:
-                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_SWIR"])
+                scaleFactor = 1./float(radianceScaling["SCALING_FACTOR_SWIR"])   # SCALING_FACTOR_SWIR is always 80
 
         else:   # else ALI:
             scaleOffset = 0.
-            scaleFactor = 1./300.  # from the EO-1 User Guide Version 2.3, FAQ on ALI
+            scaleFactor = 1./30.  # from the EO-1 User Guide Version 2.3, FAQ on ALI.  The factor is 30 instead of 300 because 300 would give us mW/cm/cm/sr/micron when we want W/m/m/sr/micron for consistency with Hyperion
 
-            ### According to (my uncertain reading of) the User Guide, these corrections were already applied in the Level-0 to Level-1 step:
+            ### According to (my uncertain reading of) the User Guide, these corrections were already applied in the Level-0 to Level-1 step and should not be applied again:
             # scaleOffset = float(radianceScaling["BAND%d_OFFSET" % bandNumber])
             # scaleFactor = 1./float(radianceScaling["BAND%d_SCALING_FACTOR" % bandNumber])
 
@@ -119,24 +120,62 @@ if __name__ == "__main__":
         geoPicture.picture = array
     else:
         geoPicture.picture = eval("array[%s]" % args.slice)
-        
-    if args.toLocalFile:
-        output = open(args.outputFilename, "w")
-        geoPicture.serialize(output)
-        output.write("\n")
-        output.close()
-    else:
+    
+    if args.sequenceFile:
+        import jpype   # only start a JVM if you're going to use SequenceFiles
+        classpath = config.get("DEFAULT", "preprocess.matsuSequenceFileInterface")
+        jvmpath = config.get("DEFAULT", "lib.jvm")
+        jpype.startJVM(jvmpath, "-Djava.class.path=%s" % classpath)
+        SequenceFileInterface = jpype.JClass("org.occ.matsu.SequenceFileInterface")
+
+        if args.toLocalFile:
+            SequenceFileInterface.openForWriting(args.outputFilename, True)
+
+        elif args.useTemporaryFile:
+            tmpFileName = "/tmp/" + os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+            SequenceFileInterface.openForWriting(tmpFileName, True)
+
+        else:
+            # NOTE: doesn't work.  Use --toLocalFile or --useTemporaryFile
+            SequenceFileInterface.openForWriting(args.outputFilename, False)
+
+        SequenceFileInterface.write("metadata", json.dumps(geoPicture.metadata))
+        SequenceFileInterface.write("bands", json.dumps(geoPicture.bands))
+        SequenceFileInterface.write("shape", json.dumps(geoPicture.picture.shape))
+
+        for index, band in enumerate(geoPicture.bands):
+            oneBandPicture = GeoPictureSerializer.GeoPicture()
+            oneBandPicture.metadata = {}
+            oneBandPicture.bands = [band]
+            oneBandPicture.picture = numpy.reshape(geoPicture.picture[:,:,index], (sampletiff.RasterYSize, sampletiff.RasterXSize, 1))
+
+            SequenceFileInterface.write(band, oneBandPicture.serialize())
+
+        SequenceFileInterface.closeWriting()
+        jpype.shutdownJVM()
+
         if args.useTemporaryFile:
-            tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
-            tmpFile = open(tmpFileName, "w")
-            geoPicture.serialize(tmpFile)
-            tmpFile.write("\n")
-            tmpFile.close()
             hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
             sys.exit(hadoop.wait())
+
+    else:
+        if args.toLocalFile:
+            output = open(args.outputFilename, "w")
+            geoPicture.serialize(output)
+            output.write("\n")
+            output.close()
         else:
-            hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
-            geoPicture.serialize(hadoop.stdin)
-            hadoop.stdin.write("\n")
-            hadoop.stdin.close()
-            sys.exit(hadoop.wait())
+            if args.useTemporaryFile:
+                tmpFileName = "/tmp/" + os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+                tmpFile = open(tmpFileName, "w")
+                geoPicture.serialize(tmpFile)
+                tmpFile.write("\n")
+                tmpFile.close()
+                hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
+                sys.exit(hadoop.wait())
+            else:
+                hadoop = subprocess.Popen([HADOOP, "dfs", "-put", "-", args.outputFilename], stdin=subprocess.PIPE)
+                geoPicture.serialize(hadoop.stdin)
+                hadoop.stdin.write("\n")
+                hadoop.stdin.close()
+                sys.exit(hadoop.wait())
