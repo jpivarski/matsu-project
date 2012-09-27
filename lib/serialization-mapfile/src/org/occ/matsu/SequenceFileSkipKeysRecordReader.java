@@ -1,6 +1,8 @@
 package org.occ.matsu;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.ArrayList;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -12,12 +14,19 @@ import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.io.SequenceFile;
 
+import org.json.simple.JSONObject;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONValue;
+
 public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text> {
     protected Configuration configuration;
     private SequenceFile.Reader reader;
     private long start;
     private long end;
     boolean more = true;
+
+    boolean restrictBands;
+    List<String> restrictBandsTo;
 
     public SequenceFileSkipKeysRecordReader() { }
 
@@ -41,7 +50,29 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
         start = reader.getPosition();
         more = start < end;
 
-        System.err.println(configuration.get("fs.file.impl"));
+        String stringRestrictBands = configuration.get("org.occ.matsu.restrictBands");
+        if (stringRestrictBands == null) {
+            restrictBands = false;
+        } else {
+            restrictBands = (stringRestrictBands.toLowerCase().equals("true"));
+        }
+
+        if (restrictBands) {
+            String jsonRestrictBandsTo = configuration.get("org.occ.matsu.restrictBandsTo");
+            restrictBandsTo = new ArrayList<String>();
+            restrictBandsTo.add("metadata");
+            restrictBandsTo.add("bands");
+            restrictBandsTo.add("shape");
+
+            JSONArray array = ((JSONArray)(JSONValue.parse(jsonRestrictBandsTo)));
+            if (array == null) {
+                throw new IOException("Cannot parse org.occ.matsu.restrictBandsTo.  Be sure to quote it like this: org.occ.matsu.restrictBandsTo='[\"B01\",\"B02\",\"B03\"]'");
+            }
+
+            for (Object item : array) {
+                restrictBandsTo.add(item.toString());
+            }
+        }
     }
 
     public Class getKeyClass() { return reader.getKeyClass(); }
@@ -54,10 +85,12 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
         long pos = reader.getPosition();
         boolean remaining = reader.next(key);
 
-        // HERE
-
         if (remaining) {
-            reader.getCurrentValue(value);
+            if (restrictBandsTo.contains(key.toString())) {
+                reader.getCurrentValue(value);
+            } else {
+                value.set("EMPTY");
+            }
         }
         if (pos >= end  &&  reader.syncSeen()) {
             more = false;

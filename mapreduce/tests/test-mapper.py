@@ -7,7 +7,7 @@ import numpy
 
 import GeoPictureSerializer
 
-ONLY_LOAD_BANDS = set(["B016", "B023"])
+ONLY_LOAD_BANDS = set(["B016", "B029"])
 
 if __name__ == "__main__":
     # enforce a structure on SequenceFile entries to be sure that Hadoop isn't splitting it up among multiple mappers
@@ -46,6 +46,8 @@ if __name__ == "__main__":
             raise IOError("SequenceFile contains \"%s\" when it should only have %s bands" % (band, str(bands)))
         
         if band in onlyload:
+            sys.stderr.write("There should be something here: %s\n" % data[:10])
+
             index = onlyload.index(band)
             oneBandPicture = GeoPictureSerializer.deserialize(data)
 
@@ -53,6 +55,9 @@ if __name__ == "__main__":
                 raise IOError("SequenceFile band \"%s\" has shape %s instead of %d by %d by 1" % (band, oneBandPicture.picture.shape, shape[0], shape[1]))
 
             geoPicture.picture[:,:,index] = oneBandPicture.picture[:,:,0]
+
+        else:
+            sys.stderr.write("SHOULD BE EMPTY: %s\n" % data[:10])
 
         if len(bandsSeen) == len(bands):
             break
