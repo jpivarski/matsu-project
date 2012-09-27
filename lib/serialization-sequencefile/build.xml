@@ -13,8 +13,10 @@
                 <!-- <pathelement location="/usr/lib/hadoop/hadoop-common.jar" /> -->
 		<!-- <pathelement location="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" /> -->
 		<!-- <pathelement location="/usr/lib/hadoop/lib/json-simple-1.1.jar" /> -->
-		<pathelement location="${jars.hadoop.core}" />
-		<pathelement location="${jars.json_simple}" />
+
+                <pathelement location="${jars.hadoop.core}" />
+                <pathelement location="${jars.json_simple}" />
+
             </classpath>
         </javac>
     </target>
@@ -32,14 +34,13 @@
             <!-- <zipfileset src="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" includes="**/*.class" /> -->
             <!-- <zipfileset src="/usr/lib/hadoop/lib/log4j-1.2.15.jar" includes="**/*.class" /> -->
             <!-- <zipfileset src="/usr/lib/hadoop/lib/json-simple-1.1.jar" includes="**/*.class" /> -->
+
+            <zipfileset src="${jars.hadoop.core}" includes="**/*.class" />
             <zipfileset src="${jars.hadoop.lib.commons.logging_api}" includes="**/*.class" />
             <zipfileset src="${jars.hadoop.lib.commons.configuration}" includes="**/*.class" />
-            <zipfileset src="${jars.guava}" includes="**/*.class" />
             <zipfileset src="${jars.hadoop.lib.commons.lang}" includes="**/*.class" />
-            <zipfileset src="${jars.hadoop.lib.slf4j_api}" includes="**/*.class" />
-            <zipfileset src="${jars.hadoop.core}" includes="**/*.class" />
-            <zipfileset src="${jars.accumulo.log4j}" includes="**/*.class" />
             <zipfileset src="${jars.json_simple}" includes="**/*.class" />
+
         </jar>
     </target>
 </project>
