@@ -10,26 +10,36 @@
         <mkdir dir="build" />
         <javac srcdir="src" destdir="build" includeantruntime="false">
             <classpath>
-                <pathelement location="/usr/lib/hadoop/hadoop-common.jar" />
-		<pathelement location="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" />
-		<pathelement location="/usr/lib/hadoop/lib/json-simple-1.1.jar" />
+                <!-- <pathelement location="/usr/lib/hadoop/hadoop-common.jar" /> -->
+		<!-- <pathelement location="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" /> -->
+		<!-- <pathelement location="/usr/lib/hadoop/lib/json-simple-1.1.jar" /> -->
+		<pathelement location="${jars.hadoop.core}" />
+		<pathelement location="${jars.json_simple}" />
             </classpath>
         </javac>
     </target>
 
     <target name="jar" depends="compile">
         <jar jarfile="matsuSequenceFileInterface.jar" basedir="build">
-            <zipfileset src="/usr/lib/hadoop/hadoop-common.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/commons-logging-api-1.1.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/commons-configuration-1.6.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/guava-11.0.2.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/commons-lang-2.5.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/hadoop-auth.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/slf4j-api-1.6.1.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/avro-1.5.4.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/log4j-1.2.15.jar" includes="**/*.class" />
-            <zipfileset src="/usr/lib/hadoop/lib/json-simple-1.1.jar" includes="**/*.class" />
+            <!-- <zipfileset src="/usr/lib/hadoop/hadoop-common.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/commons-logging-api-1.1.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/commons-configuration-1.6.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/guava-11.0.2.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/commons-lang-2.5.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/hadoop-auth.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/slf4j-api-1.6.1.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/avro-1.5.4.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/log4j-1.2.15.jar" includes="**/*.class" /> -->
+            <!-- <zipfileset src="/usr/lib/hadoop/lib/json-simple-1.1.jar" includes="**/*.class" /> -->
+            <zipfileset src="${jars.hadoop.lib.commons.logging_api}" includes="**/*.class" />
+            <zipfileset src="${jars.hadoop.lib.commons.configuration}" includes="**/*.class" />
+            <zipfileset src="${jars.guava}" includes="**/*.class" />
+            <zipfileset src="${jars.hadoop.lib.commons.lang}" includes="**/*.class" />
+            <zipfileset src="${jars.hadoop.lib.slf4j_api}" includes="**/*.class" />
+            <zipfileset src="${jars.hadoop.core}" includes="**/*.class" />
+            <zipfileset src="${jars.accumulo.log4j}" includes="**/*.class" />
+            <zipfileset src="${jars.json_simple}" includes="**/*.class" />
         </jar>
     </target>
 </project>

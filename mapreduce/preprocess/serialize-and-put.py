@@ -123,20 +123,21 @@ if __name__ == "__main__":
     
     if args.sequenceFile:
         import jpype   # only start a JVM if you're going to use SequenceFiles
-        classpath = "../../lib/serialization-mapfile/matsuSequenceFileInterface.jar"
-        jvmpath = "/usr/lib/jvm/java-6-sun/jre/lib/amd64/server/libjvm.so"
+        classpath = config.get("DEFAULT", "preprocess.matsuSequenceFileInterface")
+        jvmpath = config.get("DEFAULT", "lib.jvm")
         jpype.startJVM(jvmpath, "-Djava.class.path=%s" % classpath)
         SequenceFileInterface = jpype.JClass("org.occ.matsu.SequenceFileInterface")
 
         if args.toLocalFile:
-            SequenceFileInterface.openForWriting(args.outputFilename)
+            SequenceFileInterface.openForWriting(args.outputFilename, True)
 
         elif args.useTemporaryFile:
-            tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
-            SequenceFileInterface.openForWriting(tmpFileName)
+            tmpFileName = "/tmp/" + os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+            SequenceFileInterface.openForWriting(tmpFileName, True)
 
         else:
-            pass  # HERE (handle direct-to-Hadoop)
+            # NOTE: doesn't work.  Use --toLocalFile or --useTemporaryFile
+            SequenceFileInterface.openForWriting(args.outputFilename, False)
 
         SequenceFileInterface.write("metadata", json.dumps(geoPicture.metadata))
         SequenceFileInterface.write("bands", json.dumps(geoPicture.bands))
@@ -154,7 +155,8 @@ if __name__ == "__main__":
         jpype.shutdownJVM()
 
         if args.useTemporaryFile:
-            pass  # HERE (handle copy of temporary file)
+            hadoop = subprocess.Popen([HADOOP, "dfs", "-moveFromLocal", tmpFileName, args.outputFilename])
+            sys.exit(hadoop.wait())
 
     else:
         if args.toLocalFile:
@@ -164,7 +166,7 @@ if __name__ == "__main__":
             output.close()
         else:
             if args.useTemporaryFile:
-                tmpFileName = os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
+                tmpFileName = "/tmp/" + os.path.basename(args.outputFilename) + "".join([random.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for i in xrange(10)])
                 tmpFile = open(tmpFileName, "w")
                 geoPicture.serialize(tmpFile)
                 tmpFile.write("\n")
