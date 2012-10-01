@@ -134,6 +134,8 @@ class AugustusInterface(augustus.engine.interface.AugustusInterface):
                             "max intensity": maximumIntensity[cluster["id"]],
                             "RMS distance": sqrt(distanceSquared[cluster["id"]] / totalNumber[cluster["id"]]),
                             "weighted RMS distance": sqrt(weightedDistanceSquared[cluster["id"]] / totalIntensity[cluster["id"]]),
+                            "source": "cluster-bright-spots",
+                            "version": [1, 0, 0],
                             }
                 self.outputAccumulo.lnglat_write(key, longitude, latitude, json.dumps(metadata))
 
