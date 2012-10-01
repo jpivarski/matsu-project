@@ -85,21 +85,33 @@ def newBand(geoPicture):
     #construct svm from training data
     robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 10000, gamma = 0.001)')
 
-    #classify this image
-    classVector = classify(imageArray[:,2:], presentBandsNum)
+    #classify this image 1=cloud, 2=land(desert), 3=water, 4=land(vegetation)
+    classVector = classify(2*imageArray[:,2:], presentBandsNum)
 
+    #Enumerate the classes contained in this vector
+    U, Uindices = numpy.unique(classVector, return_inverse=True)
 
     #Create a rectangular array into which the parallelogram will be placed
-    imageArrayClass = numpy.zeros((geoPicture.picture.shape[0],geoPicture.picture.shape[1],1), dtype=numpy.float)
+    imageArrayFinal = numpy.zeros((geoPicture.picture.shape[0],geoPicture.picture.shape[1],max(U.size,3)), dtype=numpy.float)
     for i in numpy.arange(imageArray.shape[0]):
-        imageArrayClass[imageArray[i,0],imageArray[i,1],0] = 1. / classVector[i]
+        imageArrayFinal[imageArray[i,0],imageArray[i,1],Uindices[i]] = 1./ classVector[i]
 
-    geoPicture.bands.extend(["FLOOD"])
+    for i in numpy.arange(3,U.size):                                               #any band index 3 or above 
+        imageArrayFinal[:,:,1] = imageArrayFinal[:,:,1] + imageArrayFinal[:,:,i]   #(corresponding to class label 4 or above), 
+                                                                                   #is placed into "land" band, i.e., green band,
+                                                                                   # which is python index 1.                                                                               
+                                                                                   #since bands are never non-zero in same location, 
+                                                                                   #summing compresses multiple bands into one, 
+                                                                                   #without losing information.
+
+    imageArrayFinal = imageArrayFinal[:,:,0:3] * numpy.array( [[[1.,2.,3.]]] )
+
+    geoPicture.bands.extend(["CLOUDS","LAND","WATER"])
 
     geoPictureOutput = GeoPictureSerializer.GeoPicture()
     geoPictureOutput.metadata = geoPicture.metadata
     geoPictureOutput.bands = geoPicture.bands
-    geoPictureOutput.picture = numpy.concatenate( (geoPicture.picture, imageArrayClass), axis=2 )
+    geoPictureOutput.picture = numpy.concatenate( (geoPicture.picture, imageArrayFinal), axis=2 )
     return geoPictureOutput
 
 
