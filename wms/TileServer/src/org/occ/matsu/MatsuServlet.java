@@ -276,9 +276,14 @@ public class MatsuServlet extends HttpServlet {
     protected void getPoints(HttpServletRequest request, HttpServletResponse response) throws IOException {
     	if (zooKeeperInstance == null  ||  connector == null) { return; }
 
+	String pointsTableName_ = request.getParameter("pointsTableName");
+        if (pointsTableName_ == null) {
+            pointsTableName_ = pointsTableName;
+        }
+
     	Scanner scanner;
     	try {
-    	    scanner = connector.createScanner(pointsTableName, Constants.NO_AUTHS);
+    	    scanner = connector.createScanner(pointsTableName_, Constants.NO_AUTHS);
     	}
     	catch (TableNotFoundException exception) {
     	    return;
