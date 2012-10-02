@@ -7,6 +7,8 @@ import base64
 import json
 import math
 from math import floor
+import threading
+import time
 try:
     import ConfigParser as configparser
 except ImportError:
@@ -18,6 +20,19 @@ from scipy.ndimage.interpolation import affine_transform
 import jpype
 
 import GeoPictureSerializer
+
+class Heartbeat:
+    def __init__(self, frequencyInSeconds=10.):
+        self.frequencyInSeconds = frequencyInSeconds
+        self.thread = threading.Thread(target=self.run, name="Heartbeat-0x%x" % id(self))
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        while True:
+            sys.stderr.write("Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            sys.stderr.write("reporter:status:Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            time.sleep(self.frequencyInSeconds)
 
 def tileIndex(depth, longitude, latitude):
     "Inputs a depth and floating-point longitude and latitude, outputs a triple of index integers."
@@ -316,6 +331,8 @@ def collate(depth, tiles, outputAccumulo=None, outputDirectory=None, outputStrea
                 outputStream.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
 if __name__ == "__main__":
+    heartbeat = Heartbeat()
+
     config = configparser.ConfigParser()
     config.read(["../CONFIG.ini", "CONFIG.ini"])
 

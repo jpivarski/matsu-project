@@ -3,6 +3,7 @@
 import sys
 import json
 import datetime
+import threading
 import time
 from math import floor, ceil
 try:
@@ -15,6 +16,19 @@ from scipy.ndimage.interpolation import affine_transform
 from osgeo import osr
 
 import GeoPictureSerializer
+
+class Heartbeat:
+    def __init__(self, frequencyInSeconds=10.):
+        self.frequencyInSeconds = frequencyInSeconds
+        self.thread = threading.Thread(target=self.run, name="Heartbeat-0x%x" % id(self))
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        while True:
+            sys.stderr.write("Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            sys.stderr.write("reporter:status:Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            time.sleep(self.frequencyInSeconds)
 
 def tileIndex(depth, longitude, latitude):  
     "Inputs a depth and floating-point longitude and latitude, outputs a triple of index integers."
@@ -255,6 +269,8 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
 
 if __name__ == "__main__":
     osr.UseExceptions()
+
+    heartbeat = Heartbeat()
 
     config = configparser.ConfigParser()
     config.read(["../CONFIG.ini", "CONFIG.ini"])
