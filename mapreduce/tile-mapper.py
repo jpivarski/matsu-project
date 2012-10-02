@@ -132,7 +132,7 @@ def input_SequenceFile(inputStream, restrictBands, restrictBandsTo):
 
     return geoPicture
 
-def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=256, numLatitudeSections=1, splineOrder=3, useSequenceFiles=False, restrictBands=False, restrictBandsTo=[], modules=None):
+def map_to_tiles(inputStream, outputStream, depth=10, depthForKey=1, longpixels=512, latpixels=256, numLatitudeSections=1, splineOrder=3, useSequenceFiles=False, restrictBands=False, restrictBandsTo=[], modules=None):
     """Performs the mapping step of the Hadoop map-reduce job.
 
     Map: read L1G, possibly split by latitude, split by tile, transform pictures into tile coordinates, and output (tile coordinate and timestamp, transformed
@@ -141,6 +141,7 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
         * inputStream: usually sys.stdin; should be a serialized L1G picture.
         * outputStream: usually sys.stdout; keys and values are separated by a tab, key-value pairs are separated by a newline.
         * depth: logarithmic scale of the tile; 10 is the limit of Hyperion's resolution
+        * depthForKey: widest zoom scale for the reducer (must be a smaller number than 'depth')
         * longpixels, latpixels: number of pixels in the output tiles
         * numLatitudeSections: number of latitude stripes to cut before splitting into tiles (reduces error due to Earth's curvature)
         * splineOrder: order of the spline used to calculate the affine_transformation (see SciPy docs); must be between 0 and 5
@@ -260,7 +261,11 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
             outputGeoPicture.metadata = geoPicture.metadata
             outputGeoPicture.bands = geoPicture.bands + ["MASK"]
 
-            outputStream.write("%s-%010d\t" % (tileName(*ti), timestamp))
+            parentDepth, parentLongIndex, parentLatIndex = ti
+            while parentDepth > depthForKey:
+                parentDepth, parentLongIndex, parentLatIndex = tileParent(parentDepth, parentLongIndex, parentLatIndex)
+
+            outputStream.write("%s.%s-%010d\t" % (tileName(parentDepth, parentLongIndex, parentLatIndex), tileName(*ti), timestamp))
             try:
                 outputGeoPicture.serialize(outputStream)
             except IOError:
@@ -290,4 +295,4 @@ if __name__ == "__main__":
     modules = json.loads(config.get("DEFAULT", "mapper.modules"))
     if modules == []: modules = None
 
-    map_to_tiles(sys.stdin, sys.stdout, depth=zoomDepthNarrowest, longpixels=longpixels, latpixels=latpixels, numLatitudeSections=numLatitudeSections, splineOrder=splineOrder, useSequenceFiles=useSequenceFiles, restrictBands=restrictBands, restrictBandsTo=restrictBandsTo, modules=modules)
+    map_to_tiles(sys.stdin, sys.stdout, depth=zoomDepthNarrowest, depthForKey=zoomDepthWidest, longpixels=longpixels, latpixels=latpixels, numLatitudeSections=numLatitudeSections, splineOrder=splineOrder, useSequenceFiles=useSequenceFiles, restrictBands=restrictBands, restrictBandsTo=restrictBandsTo, modules=modules)

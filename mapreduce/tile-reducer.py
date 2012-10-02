@@ -21,6 +21,8 @@ import jpype
 
 import GeoPictureSerializer
 
+producerVersion = [1, 0, 0]
+
 class Heartbeat:
     def __init__(self, frequencyInSeconds=10.):
         self.frequencyInSeconds = frequencyInSeconds
@@ -111,8 +113,12 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
                     maxPercent = 95.
                 maxRadiance = None
 
+            try:
+                dotPosition = line.index(".")
+            except ValueError:
+                dotPosition = -1
             tabPosition = line.index("\t")
-            key = line[:tabPosition]
+            key = line[dotPosition+1:tabPosition]
             value = line[tabPosition+1:-1]
 
             depth, longIndex, latIndex, timestamp = map(int, key.lstrip("T").split("-"))
@@ -238,7 +244,7 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write(outputKey, "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{\"analytic\": \"tile-producer\", \"version\": %s}" % str(producerVersion), buff.getvalue())
             if outputDirectory is not None:
                 image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
             if outputStream is not None:
@@ -324,7 +330,7 @@ def collate(depth, tiles, outputAccumulo=None, outputDirectory=None, outputStrea
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write(outputKey, "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{\"analytic\": \"tile-producer\", \"version\": %s}" % str(producerVersion), buff.getvalue())
             if outputStream is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
