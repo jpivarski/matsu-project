@@ -86,7 +86,7 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
         boolean remaining = reader.next(key);
 
         if (remaining) {
-            if (restrictBandsTo.contains(key.toString())) {
+            if (!restrictBands  ||  restrictBandsTo.contains(key.toString())) {
                 reader.getCurrentValue(value);
             } else {
                 value.set("EMPTY");

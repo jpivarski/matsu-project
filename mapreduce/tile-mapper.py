@@ -3,6 +3,7 @@
 import sys
 import json
 import datetime
+import threading
 import time
 from math import floor, ceil
 try:
@@ -52,7 +53,7 @@ def input_oneLine(inputStream):
     if not line: raise IOError("No input")
     return GeoPictureSerializer.deserialize(line)
 
-def input_SequenceFile(inputStream, restrictBands, restrictBandsTo):
+def input_SequenceFile(inputStream, incomingBandRestriction):
     # enforce a structure on SequenceFile entries to be sure that Hadoop isn't splitting it up among multiple mappers
     name, metadata = sys.stdin.readline().rstrip().split("\t")
     if name != "metadata":
@@ -77,9 +78,9 @@ def input_SequenceFile(inputStream, restrictBands, restrictBandsTo):
         raise IOError("Third entry in the SequenceFile is \"%s\" rather than shape" % name)
     shape = json.loads(shape)
 
-    if restrictBands:
+    if incomingBandRestriction is not None:
         # drop undesired bands
-        onlyload = sorted(restrictBandsTo.intersection(bands))
+        onlyload = sorted(incomingBandRestriction.intersection(bands))
         shape = (shape[0], shape[1], len(onlyload))
     else:
         onlyload = bands
@@ -118,7 +119,26 @@ def input_SequenceFile(inputStream, restrictBands, restrictBandsTo):
 
     return geoPicture
 
-def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=256, numLatitudeSections=1, splineOrder=3, useSequenceFiles=False, restrictBands=False, restrictBandsTo=[], modules=None):
+def removeBands(geoPicture, outgoingBandRestriction):
+    if outgoingBandRestriction is None:
+        return geoPicture
+
+    outputBands = []
+    for band in geoPicture.bands:
+        if band in outgoingBandRestriction:
+            outputBands.append(band)
+    
+    output = numpy.empty((geoPicture.picture.shape[0], geoPicture.picture.shape[1], len(outputBands)), dtype=numpy.float)
+    for band in outputBands:
+        output[:,:,outputBands.index(band)] = geoPicture.picture[:,:,geoPicture.bands.index(band)]
+
+    geoPictureOutput = GeoPictureSerializer.GeoPicture()
+    geoPictureOutput.metadata = geoPicture.metadata
+    geoPictureOutput.bands = outputBands
+    geoPictureOutput.picture = output
+    return geoPictureOutput
+
+def map_to_tiles(inputStream, outputStream, depth=10, depthForKey=1, longpixels=512, latpixels=256, numLatitudeSections=1, splineOrder=3, useSequenceFiles=False, incomingBandRestriction=None, outgoingBandRestriction=None, modules=None, globalVariables={}):
     """Performs the mapping step of the Hadoop map-reduce job.
 
     Map: read L1G, possibly split by latitude, split by tile, transform pictures into tile coordinates, and output (tile coordinate and timestamp, transformed
@@ -127,9 +147,13 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
         * inputStream: usually sys.stdin; should be a serialized L1G picture.
         * outputStream: usually sys.stdout; keys and values are separated by a tab, key-value pairs are separated by a newline.
         * depth: logarithmic scale of the tile; 10 is the limit of Hyperion's resolution
+        * depthForKey: widest zoom scale for the reducer (must be a smaller number than 'depth')
         * longpixels, latpixels: number of pixels in the output tiles
         * numLatitudeSections: number of latitude stripes to cut before splitting into tiles (reduces error due to Earth's curvature)
         * splineOrder: order of the spline used to calculate the affine_transformation (see SciPy docs); must be between 0 and 5
+        * useSequenceFiles: if True, read data one band at a time (possibly dropping bands) from Hadoop SequenceFiles
+        * incomingBandRestriction: if not None, restrict the incoming bands to this set
+        * outgoingBandRestriction: if not None, restrict the outgoing bands to this set
         * modules: a list of external Python files to evaluate as analytics
     """
 
@@ -140,17 +164,28 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
             exec(compile(open(module).read(), module, "exec"), globalVars)
             loadedModules.append(globalVars["newBand"])
 
+    sys.stderr.write("Loading an image at %s\n" % time.strftime("%H:%M:%S"))
+
     # get the Level-1 image
     if not useSequenceFiles:
         geoPicture = input_oneLine(inputStream)
     else:
-        geoPicture = input_SequenceFile(inputStream, restrictBands, restrictBandsTo)
+        geoPicture = input_SequenceFile(inputStream, incomingBandRestriction)
 
     inputBands = geoPicture.bands[:]
+
+    sys.stderr.write("Starting modules at %s\n" % time.strftime("%H:%M:%S"))
 
     # run the external analytics
     for newBand in loadedModules:
         geoPicture = newBand(geoPicture)
+
+    sys.stderr.write("Removing bands at %s\n" % time.strftime("%H:%M:%S"))
+
+    # remove unnecessary bands
+    geoPicture = removeBands(geoPicture, outgoingBandRestriction)
+
+    sys.stderr.write("Creating tiles at %s\n" % time.strftime("%H:%M:%S"))
 
     # convert GeoTIFF coordinates into degrees
     tlx, weres, werot, tly, nsrot, nsres = json.loads(geoPicture.metadata["GeoTransform"])
@@ -246,32 +281,85 @@ def map_to_tiles(inputStream, outputStream, depth=10, longpixels=512, latpixels=
             outputGeoPicture.metadata = geoPicture.metadata
             outputGeoPicture.bands = geoPicture.bands + ["MASK"]
 
-            outputStream.write("%s-%010d\t" % (tileName(*ti), timestamp))
+            parentDepth, parentLongIndex, parentLatIndex = ti
+            while parentDepth > depthForKey:
+                parentDepth, parentLongIndex, parentLatIndex = tileParent(parentDepth, parentLongIndex, parentLatIndex)
+
+            sys.stderr.write("Writing tile %s at %s\n" % (tileName(*ti), time.strftime("%H:%M:%S")))
+
+            globalVariables["forestallDeath"] = True
+            outputStream.write("%s.%s-%010d\t" % (tileName(parentDepth, parentLongIndex, parentLatIndex), tileName(*ti), timestamp))
             try:
                 outputGeoPicture.serialize(outputStream)
             except IOError:
                 outputStream.write("BROKEN")
             outputStream.write("\n")
+            globalVariables["forestallDeath"] = False
+
+    sys.stderr.write("Done at %s\n" % time.strftime("%H:%M:%S"))
+    globalVariables["doneWithEverything"] = True
+
+def doEverything(globalVariables):
+    try:
+        config = configparser.ConfigParser()
+        config.read(["../CONFIG.ini", "CONFIG.ini"])
+
+        zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
+        zoomDepthWidest = int(config.get("DEFAULT", "mapreduce.zoomDepthWidest"))
+        if zoomDepthWidest >= zoomDepthNarrowest:
+            raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
+
+        longpixels = int(config.get("DEFAULT", "mapper.tileLongitudePixels"))
+        latpixels = int(config.get("DEFAULT", "mapper.tileLatitudePixels"))
+        numLatitudeSections = int(config.get("DEFAULT", "mapper.numberOfLatitudeSections"))
+        splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
+        useSequenceFiles = (config.get("DEFAULT", "mapper.useSequenceFiles").lower() == "true")
+        incomingBandRestriction = json.loads(config.get("DEFAULT", "mapper.incomingBandRestriction"))
+        if incomingBandRestriction is not None:
+            incomingBandRestriction = set(incomingBandRestriction)
+        outgoingBandRestriction = json.loads(config.get("DEFAULT", "mapper.outgoingBandRestriction"))
+        if outgoingBandRestriction is not None:
+            outgoingBandRestriction = set(outgoingBandRestriction)
+        modules = json.loads(config.get("DEFAULT", "mapper.modules"))
+        if modules == []: modules = None
+
+        map_to_tiles(sys.stdin, sys.stdout, depth=zoomDepthNarrowest, depthForKey=zoomDepthWidest, longpixels=longpixels, latpixels=latpixels, numLatitudeSections=numLatitudeSections, splineOrder=splineOrder, useSequenceFiles=useSequenceFiles, incomingBandRestriction=incomingBandRestriction, outgoingBandRestriction=outgoingBandRestriction, modules=modules, globalVariables=globalVariables)
+    except Exception as exception:
+        globalVariables["exception"] = exception
+        sys.exit(0)
 
 if __name__ == "__main__":
     osr.UseExceptions()
+    globalVariables = {"forestallDeath": False, "doneWithEverything": False}
 
-    config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    workerThread = threading.Thread(target=doEverything, args=(globalVariables,), name="WorkerThread")
+    workerThread.daemon = True
+    workerThread.start()
 
-    zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
-    zoomDepthWidest = int(config.get("DEFAULT", "mapreduce.zoomDepthWidest"))
-    if zoomDepthWidest >= zoomDepthNarrowest:
-        raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
+    frequencyInSeconds = 10
+    lifetime = 40*60
+    birth = time.time()
 
-    longpixels = int(config.get("DEFAULT", "mapper.tileLongitudePixels"))
-    latpixels = int(config.get("DEFAULT", "mapper.tileLatitudePixels"))
-    numLatitudeSections = int(config.get("DEFAULT", "mapper.numberOfLatitudeSections"))
-    splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
-    useSequenceFiles = (config.get("DEFAULT", "mapper.useSequenceFiles").lower() == "true")
-    restrictBands = (config.get("DEFAULT", "mapper.restrictBands").lower() == "true")
-    restrictBandsTo = set(json.loads(config.get("DEFAULT", "mapper.restrictBandsTo")))
-    modules = json.loads(config.get("DEFAULT", "mapper.modules"))
-    if modules == []: modules = None
+    while True:
+        sys.stderr.write("Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+        sys.stderr.write("reporter:status:Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+        time.sleep(frequencyInSeconds)
+        
+        now = time.time()
+        if globalVariables["forestallDeath"]:
+            sys.stderr.write("Narrowly avoided dying while writing at %s\n" % time.strftime("%H:%M:%S"))
 
-    map_to_tiles(sys.stdin, sys.stdout, depth=zoomDepthNarrowest, longpixels=longpixels, latpixels=latpixels, numLatitudeSections=numLatitudeSections, splineOrder=splineOrder, useSequenceFiles=useSequenceFiles, restrictBands=restrictBands, restrictBandsTo=restrictBandsTo, modules=modules)
+        elif now - birth > lifetime:
+            sys.stderr.write("Cardiac at %s after a fulfilling life of %g minutes\n" % (time.strftime("%H:%M:%S"), (now - birth)/60.))
+            sys.stderr.write("reporter:status:Cardiac at %s after a fulfilling life of %g minutes\n" % (time.strftime("%H:%M:%S"), (now - birth)/60.))
+            break
+
+        if globalVariables["doneWithEverything"]:
+            sys.stderr.write("Done with everything at %s\n" % time.strftime("%H:%M:%S"))
+            break
+
+        if "exception" in globalVariables:
+            sys.stderr.write("Oops, exception at %s\n" % time.strftime("%H:%M:%S"))
+            raise globalVariables["exception"]
+
+    sys.stderr.write("Out of the loop at %s\n" % time.strftime("%H:%M:%S"))

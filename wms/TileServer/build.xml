@@ -14,6 +14,9 @@
                 <include name="**/*.class"/>
                 <include name="**/*.java"/>
             </fileset>
+            <fileset dir="WebContent/WEB-INF/lib">
+                <include name="**/*.jar"/>
+            </fileset>
             <fileset dir="./">
                 <include name="TileServer.war"/>
             </fileset>
@@ -23,6 +26,7 @@
     <target name="compile">
         <mkdir dir="WebContent/WEB-INF/classes"/>
         <mkdir dir="WebContent/WEB-INF/classes/src"/>
+        <mkdir dir="WebContent/WEB-INF/lib"/>
 
 	<copy file="src/org/occ/matsu/MatsuServlet.java" tofile="WebContent/WEB-INF/classes/src/org/occ/matsu/MatsuServlet.java">
 	    <filterchain>
@@ -36,6 +40,17 @@
 		</replacetokens>
 	    </filterchain>
 	</copy>
+
+        <copy file="${jars.accumulo.core}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.accumulo.cloudtrace}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.accumulo.commons.logging}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.hadoop.core}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.hadoop.lib.junit}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.accumulo.libthrift}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.accumulo.log4j}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.hadoop.lib.slf4j_api}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.hadoop.lib.slf4j_log4j12}" todir="WebContent/WEB-INF/lib" />
+        <copy file="${jars.zookeeper}" todir="WebContent/WEB-INF/lib" />
 
         <javac srcdir="WebContent/WEB-INF/classes/src" destdir="WebContent/WEB-INF/classes" debug="true" includeAntRuntime="false">
             <classpath refid="classpath.base"/>

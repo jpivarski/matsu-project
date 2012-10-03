@@ -15,6 +15,9 @@
       .clickablered:hover { background: #fcb4ae; }
     </style>
     <script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?key=AIzaSyAVNOfpLX6KdByplQxeMH1kuPZcYWBmz3c&sensor=false"></script>
+    <link rel="stylesheet" href="css/black-tie/jquery-ui-1.8.23.custom.css">
+    <script type="text/javascript" src="js/jquery-1.8.0.min.js"></script>
+    <script type="text/javascript" src="js/jquery-ui-1.8.23.custom.min.js"></script>
     <script type="text/javascript">
 // <![CDATA[
 
@@ -36,6 +39,7 @@ var z = <%= giveMeSomething("z", "9", request) %>;
 var layers = ["RGB"];
 
 var points = {};
+var dontReloadPoints = {};
 var oldsize;
 var crossover = 4;
 var showPoints = true;
@@ -50,6 +54,16 @@ var stats_numPoints = 0;
 
 var map_canvas;
 var sidebar;
+
+var minUserTime;
+var maxUserTime;
+
+var minScore = 0.0;
+var maxScore = 10.0;
+var minUserScore = 5.0;
+var maxUserScore = 10.0;
+var scoreField = "analyticscore";
+var pointsTableName = "MatsuLevel2LngLat";
 
 Number.prototype.pad = function(size) {
     if (typeof(size) !== "number") { size = 2; }
@@ -117,16 +131,16 @@ window.onresize = doresize;
 function initialize() {
     var nodeList = document.querySelectorAll("input.layer-checkbox");
     for (var i in nodeList) {
-        if (nodeList[i].type == "checkbox") {
+	if (nodeList[i].type == "checkbox") {
             nodeList[i].checked = (layers.indexOf(nodeList[i].id.substring(6)) != -1);
-        }
+	}
     }
     document.getElementById("show-points").checked = showPoints;
 
     getTable();
 
     var latLng = new google.maps.LatLng(lat, lng);
-    var options = {zoom: z, center: latLng, mapTypeId: google.maps.MapTypeId.SATELLITE};
+    var options = {zoom: z, center: latLng, mapTypeId: google.maps.MapTypeId.TERRAIN};
     map = new google.maps.Map(document.getElementById("map_canvas"), options);
     google.maps.event.addListener(map, "bounds_changed", getEverything);
 
@@ -138,120 +152,173 @@ function initialize() {
     sidebar = document.getElementById("sidebar");
     doresize();
     sidebar.addEventListener("DOMAttrModified", doresize);
+
+    minUserTime = 1230789600;    // Jan 1, 2009 00:00:00
+    maxUserTime = 1357020000;    // Jan 1, 2013 00:00:00
+
+    $(function() {
+	$( "#slider-time" ).slider({
+	    range: true,
+	    min: minUserTime,
+	    max: maxUserTime,
+	    values: [minUserTime, maxUserTime],
+	    slide: function( event, ui ) {
+		minUserTime = ui.values[0];
+		maxUserTime = ui.values[1];
+	    },
+	    stop: function( event, ui ) {
+		for (var key in overlays) {
+		    overlays[key].setMap(null);
+		    delete overlays[key];
+		}
+		overlays = {};
+
+		for (var key in points) {
+		    points[key].setMap(null);
+		    delete points[key];
+		}
+		points = {};
+		dontReloadPoints = {};
+
+		getEverything();
+	    }
+	});
+    });
+
+    $(function() {
+	$( "#slider-points" ).slider({
+	    range: true,
+	    min: 0.0,
+	    max: 1.0,
+            step: 0.01,
+	    values: [(minUserScore - minScore)/(maxScore - minScore), (maxUserScore - minScore)/(maxScore - minScore)],
+	    slide: function( event, ui ) {
+		minUserScore = ui.values[0] * (maxScore - minScore) + minScore;
+		maxUserScore = ui.values[1] * (maxScore - minScore) + minScore;
+	    },
+	    stop: function( event, ui ) {
+                drawTable();
+
+		for (var key in points) {
+		    points[key].setMap(null);
+		    delete points[key];
+		}
+		points = {};
+		dontReloadPoints = {};
+
+                if (showPoints) { getLngLatPoints(); }
+                else { updateStatus(); }
+	    }
+	});
+    });
 }
 
 function getTable() {
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.onreadystatechange = function() {
-        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
-            alldata = JSON.parse(xmlhttp.responseText)["data"];
-            drawTable();
-        }
+	if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+	    if (xmlhttp.responseText != "") {
+		alldata = JSON.parse(xmlhttp.responseText)["data"];
+		drawTable();
+	    }
+	}
     }
-    xmlhttp.open("GET", "../TileServer/getTile?command=points", true);
+    xmlhttp.open("GET", "../TileServer/getTile?command=points&pointsTableName=" + pointsTableName, true);
     xmlhttp.send();
 }
 
 function drawTable(sortfield, numeric, increasing) {
     if (sortfield != null) {
-        var inmetadata = (sortfield != "latitude"  &&  sortfield != "longitude"  &&  sortfield != "time");
-        alldata.sort(function(a, b) {
+	var inmetadata = (sortfield != "latitude"  &&  sortfield != "longitude"  &&  sortfield != "time");
+	alldata.sort(function(a, b) {
             var aa, bb;
-            if (inmetadata) {
-                aa = a["metadata"][sortfield];
-                bb = b["metadata"][sortfield];
-            }
-            else {
-                aa = a[sortfield];
-                bb = b[sortfield];
-            }
+	    if (inmetadata) {
+		aa = a["metadata"][sortfield];
+	       	bb = b["metadata"][sortfield];
+	    }
+	    else {
+		aa = a[sortfield];
+		bb = b[sortfield];
+	    }
 
-            if (numeric) {
-                if (increasing) {
-                    return aa - bb;
-                }
-                else {
-                    return bb - aa;
-                }
-            }
-            else {
-                if (increasing) {
-                    return aa > bb;
-                }
-                else {
-                    return bb > aa;
-                }
-            }
-        });
+	    if (numeric) {
+		if (increasing) {
+		    return aa - bb;
+		}
+		else {
+		    return bb - aa;
+		}
+	    }
+	    else {
+		if (increasing) {
+		    return aa > bb;
+		}
+		else {
+		    return bb > aa;
+		}
+	    }
+	});
     }
 
     var fields = ["latitude", "longitude", "acquisition time"];
     var nonNumericFields = [];
     var rowtexts = [];
     
+    var ii = 0;
     for (var i in alldata) {
-        var evenOdd = "even";
-        if (i % 2 == 1) { evenOdd = "odd"; }
+        if (alldata[i]["metadata"][scoreField] > minUserScore  &&  alldata[i]["metadata"][scoreField] < maxUserScore) {
+	    var evenOdd = "even";
+	    if (ii % 2 == 1) { evenOdd = "odd"; }
+            ii++;
 
-        var row = alldata[i];
-        for (var m in row["metadata"]) {
-            if (fields.indexOf(m) == -1) {
-                fields.push(m);
-            }
+	    var row = alldata[i];
+	    for (var m in row["metadata"]) {
+                if (fields.indexOf(m) == -1) {
+                    if (m != "analyticversion"  &&  m != "analytic"  &&  m != "image"  &&  m != "source"  &&  m != "version") {
+		        fields.push(m);
+                    }
+	        }
+	    }
+
+	    var func = "map.setCenter(new google.maps.LatLng(" + row["latitude"] + ", " + row["longitude"] + ")); map.setZoom(13);";
+
+	    var rowtext = "<tr id=\"table-" + row["identifier"] + "\" class=\"row " + evenOdd + " clickablered\" onmouseup=\"" + func + "\">";
+
+	    for (var fi in fields) {
+	        var f = fields[fi];
+	        var s;
+	        if (fi < 2) {
+		    s = row[f];
+	        }
+	        else if (fi == 2) {
+		    var d = new Date(1000 * row["time"]);
+		    d.setMinutes(d.getMinutes() + d.getTimezoneOffset());  // get rid of any local timezone correction on the client's machine!
+		    s = d.getFullYear() + "-" + (d.getMonth() + 1).pad(2) + "-" + d.getDate().pad(2) + " " + d.getHours().pad(2) + ":" + d.getMinutes().pad(2);
+	        }
+	        else {
+		    s = row["metadata"][f];
+	        }
+	        rowtext += "<td class=\"cell\">" + s + "</td>";
+
+	        if (fi != 2  &&  !isNumber(s)  &&  nonNumericFields.indexOf(f) == -1) {
+		    nonNumericFields.push(f);
+	        }
+	    }
+	    rowtext += "</tr>";
+
+	    rowtexts.push(rowtext);
         }
-
-        var func = "map.setCenter(new google.maps.LatLng(" + row["latitude"] + ", " + row["longitude"] + ")); map.setZoom(13);";
-
-        var rowtext = "<tr id=\"table-" + row["identifier"] + "\" class=\"row " + evenOdd + " clickablered\" onmouseup=\"" + func + "\">";
-
-        for (var fi in fields) {
-            var f = fields[fi];
-            var s;
-            if (fi < 2) {
-                s = row[f];
-            }
-            else if (fi == 2) {
-                var d = new Date(1000 * row["time"]);
-                d.setMinutes(d.getMinutes() + d.getTimezoneOffset());  // get rid of any local timezone correction on the client's machine!
-                s = d.getFullYear() + "-" + (d.getMonth() + 1).pad(2) + "-" + d.getDate().pad(2) + " " + d.getHours().pad(2) + ":" + d.getMinutes().pad(2);
-            }
-            else {
-                s = row["metadata"][f];
-            }
-            rowtext += "<td class=\"cell\">" + s + "</td>";
-
-            if (fi != 2  &&  !isNumber(s)  &&  nonNumericFields.indexOf(f) == -1) {
-                nonNumericFields.push(f);
-            }
-        }
-        rowtext += "</tr>";
-
-        rowtexts.push(rowtext);
     }
 
     var headerrow = "<tr class=\"row header\">";
     for (var fi in fields) {
-        var f = fields[fi];
-        var func = "drawTable('" + f + "', " + (nonNumericFields.indexOf(f) == -1) + ", " + (!increasing) + ");";
-        headerrow += "<td class=\"cell clickableblue\" onmouseup=\"" + func + "\">" + f + "</td>";
+	var f = fields[fi];
+	var func = "drawTable('" + f + "', " + (nonNumericFields.indexOf(f) == -1) + ", " + (!increasing) + ");";
+	headerrow += "<td class=\"cell clickableblue\" onmouseup=\"" + func + "\">" + f + "</td>";
     }
     headerrow += "</tr>\n";
     
     document.getElementById("table-here").innerHTML = "<table>\n" + headerrow + rowtexts.join("\n") + "\n</table>";
-
-
-
-
-// "<table> \
-// <tr class=\"row header\"><td class=\"cell\">time</td><td class=\"cell\">latitude</td><td class=\"cell\">longitude</td></tr> \
-// <tr class=\"row even\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// <tr class=\"row odd\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// <tr class=\"row even\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// <tr class=\"row odd\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// <tr class=\"row even\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// <tr class=\"row odd\"><td class=\"cell\">1</td><td class=\"cell\">2</td><td class=\"cell\">3</td></tr> \
-// </table>";
-
 }
 
 function getEverything() {
@@ -268,17 +335,17 @@ function toggleState(name, objname) {
     var i = layers.indexOf(name);
 
     if (newState  &&  i == -1) {
-        layers.push(name);
+	layers.push(name);
     }
     else if (!newState  &&  i != -1) {
-        layers.splice(i, 1);
+	layers.splice(i, 1);
 
-        for (var key in overlays) {
-            if (key.substring(16, 16 + name.length) == name) {
-                overlays[key].setMap(null);
-                delete overlays[key];
-            }
-        }
+	for (var key in overlays) {
+            if (key.substring(16) == name) {
+		overlays[key].setMap(null);
+		delete overlays[key];
+	    }
+	}
     }
 
     getOverlays();
@@ -290,17 +357,18 @@ function togglePoints(objname) {
     obj.checked = showPoints;
 
     if (showPoints) {
-        getLngLatPoints();
+	getLngLatPoints();
     }
     else {
-        for (var key in points) {
+	for (var key in points) {
             points[key].setMap(null);
-            delete points[key];
-        }
-        points = {};
-        oldsize = -2;
-        stats_numPoints = 0;
-        updateStatus();
+	    delete points[key];
+	}
+	points = {};
+	dontReloadPoints = {};
+	oldsize = -2;
+	stats_numPoints = 0;
+	updateStatus();
     }
 }
 
@@ -332,28 +400,18 @@ function getOverlays() {
     stats_numVisible = 0;
     var numAdded = 0;
     for (var i in layers) {
-        for (var longIndex = longmin;  longIndex <= longmax;  longIndex++) {
+	for (var longIndex = longmin;  longIndex <= longmax;  longIndex++) {
             for (var latIndex = latmin;  latIndex <= latmax;  latIndex++) {
-                var xmlhttp = new XMLHttpRequest();
-                xmlhttp.onreadystatechange = function(x, d, lng, lat) { return function() {
-                    if (x.readyState == 4  &&  x.status == 200) {
-                        var keys = JSON.parse(x.responseText)["data"];
-                        for (var key in keys) {
-                            if (!(key in overlays)) {
-                                var overlay = new google.maps.GroundOverlay("../TileServer/getTile?key=" + key, tileCorners(d, lng, lat));
-                                overlay.setMap(map);
-                                overlays[key] = overlay;
-                                numAdded++;
-                            }
-                            stats_numVisible++;
-                        }
-                    }
-                } }(xmlhttp, depth, longIndex, latIndex);
-                var url = "../TileServer/getTile?command=imageList&key=" + tileName(depth, longIndex, latIndex, layers[i]) + "";  // TODO: timemin, timemax
-                xmlhttp.open("GET", url, true);
-                xmlhttp.send();
+	    	var key = tileName(depth, longIndex, latIndex, layers[i]);
+		if (!(key in overlays)) {
+                    var overlay = new google.maps.GroundOverlay("../TileServer/getTile?command=images&key=" + key + "&timemin=" + minUserTime + "&timemax=" + maxUserTime, tileCorners(depth, longIndex, latIndex));
+                    overlay.setMap(map);
+                    overlays[key] = overlay;
+                    numAdded++;
+		}
+		stats_numVisible++;
             }
-        }
+	}
     }
 
     stats_numInMemory = 0;
@@ -369,26 +427,27 @@ function getLngLatPoints() {
     var depth = map.getZoom() - 2;
     var size = 0;
     if (depth <= 9) {
-        circle.size = new google.maps.Size(18, 18);
-        circle.scaledSize = new google.maps.Size(18, 18);
-        circle.anchor = new google.maps.Point(9, 9);
-        if (depth <= crossover) {
+	circle.size = new google.maps.Size(18, 18);
+	circle.scaledSize = new google.maps.Size(18, 18);
+	circle.anchor = new google.maps.Point(9, 9);
+	if (depth <= crossover) {
             size = -1;
-        }
+	}
     }
     else {
-        size = Math.pow(2, depth - 10);
-        circle.size = new google.maps.Size(36 * size, 36 * size);
-        circle.scaledSize = new google.maps.Size(36 * size, 36 * size);
-        circle.anchor = new google.maps.Point(18 * size, 18 * size);
+	size = Math.pow(2, depth - 10);
+	circle.size = new google.maps.Size(36 * size, 36 * size);
+	circle.scaledSize = new google.maps.Size(36 * size, 36 * size);
+	circle.anchor = new google.maps.Point(18 * size, 18 * size);
     }
 
     if (oldsize != size) {
-        for (var key in points) {
+	for (var key in points) {
             points[key].setMap(null);
-            delete points[key];
-        }
-        points = {};
+	    delete points[key];
+	}
+	points = {};
+	dontReloadPoints = {};
     }
     oldsize = size;
 
@@ -400,52 +459,64 @@ function getLngLatPoints() {
     [depth, longmin, latmin] = tileIndex(10, longmin, latmin);
     [depth, longmax, latmax] = tileIndex(10, longmax, latmax);
 
+    var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
+    for (var oldkey in dontReloadPoints) {
+	if (key == oldkey) {
+	    return;
+	}
+    }
+    dontReloadPoints[key] = true;
+
     var url;
     if (size != -1) {
-        url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax;
+	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&pointsTableName=" + pointsTableName;
     }
     else {
-        url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover;
+	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover + "&pointsTableName=" + pointsTableName;
     }
 
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.onreadystatechange = function() {
-        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
-            var data = JSON.parse(xmlhttp.responseText)["data"];
-            for (var i in data) {
-                var identifier = data[i]["identifier"];
-                if (!(identifier in points)) {
-                    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
+	if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+	    if (xmlhttp.responseText != "") {
+		var data = JSON.parse(xmlhttp.responseText)["data"];
+		for (var i in data) {
+	    	    var identifier = data[i]["identifier"];
+                    if (data[i]["metadata"][scoreField] > minUserScore  &&  data[i]["metadata"][scoreField] < maxUserScore) {
+		        if (!(identifier in points)) {
+			    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
 
-                    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
-                        var obj = document.getElementById("table-" + ident);
-                        obj.style.background = "#ffff00";
-                        sidebar.scrollTop = obj.offsetTop;
+			    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
+			        var obj = document.getElementById("table-" + ident);
+			        obj.style.background = "#ffff00";
+			        sidebar.scrollTop = obj.offsetTop;
 
-                        var countdown = 10;
-                        var state = true;
-                        var callme = function() {
-                            if (state) {
-                                obj.style.background = null;
-                                state = false;
-                            }
-                            else {
-                                obj.style.background = "#ffff00";
-                                state = true;
-                            }
+			        var countdown = 10;
+			        var state = true;
+			        var callme = function() {
+				    if (state) {
+				        obj.style.background = null;
+				        state = false;
+				    }
+				    else {
+				        obj.style.background = "#ffff00";
+				        state = true;
+				    }
 
-                            countdown--;
-                            if (countdown >= 0) { setTimeout(callme, 200); }
-                        };
-                        setTimeout(callme, 200);
+				    countdown--;
+				    if (countdown >= 0) { setTimeout(callme, 200); }
+			        };
+			        setTimeout(callme, 200);
 
-                    } }(identifier));
+			    } }(identifier));
+		        }
+		    }
                 }
-            }
+	    }
 
-            stats_numPoints = Object.size(points);
-            updateStatus();
-        }
+	    stats_numPoints = Object.size(points);
+	    updateStatus();
+	}
     }
     xmlhttp.open("GET", url, true);
     xmlhttp.send();
@@ -455,23 +526,74 @@ function updateStatus() {
     stats.innerHTML = "<span class='spacer'>Zoom depth: " + stats_depth + "</span><span class='spacer'>Tiles visible: " + stats_numVisible + "</span><span class='spacer'>Tiles in your browser's memory: " + stats_numInMemory + " (counting empty tiles)</span><span class='spacer'>Points: " + stats_numPoints + "</span>";
 }
 
+function switchTables(index) {
+    if (index == 0) {
+        minScore = 0.0;
+        maxScore = 10.0;
+        minUserScore = 5.0;
+        maxUserScore = 10.0;
+        scoreField = "analyticscore";
+        pointsTableName = "MatsuLevel2LngLat";
+    } else {
+        minScore = 0.0;
+        maxScore = 30.0;
+        minUserScore = 15.0;
+        maxUserScore = 30.0;
+        scoreField = "analyticsscore";
+        pointsTableName = "MatsuLevel2Clusters";
+    }
+
+    getTable();
+
+    for (var key in points) {
+	points[key].setMap(null);
+	delete points[key];
+    }
+    points = {};
+    dontReloadPoints = {};
+
+    if (showPoints) { getLngLatPoints(); }
+    else { updateStatus(); }
+}
+
 // ]]>
     </script>
   </head>
   <body onload="initialize();" style="width: 100%; margin: 0px;">
 
   <div id="map_canvas" style="position: fixed; top: 5px; right: 5px; width: 100px; height: 100px; float: right; border: 1px solid black;"></div>
-  <div id="sidebar" style="position: fixed; top: 5px; left: 5px; width: 550px; height: 100px; vertical-align: top; resize: horizontal; float: left; background: white; border: 1px solid black; padding: 5px; overflow-x: hidden; overflow-y: scroll;">
+  <div id="sidebar" style="position: fixed; top: 5px; left: 5px; width: 300px; height: 100px; vertical-align: top; resize: horizontal; float: left; background: white; border: 1px solid black; padding: 5px; overflow-x: hidden; overflow-y: scroll;">
 
-<h3 style="margin-top: 0px;">Layers</h3>
+<h3 style="margin-top: 0px;">Timespan</h3>
+<div style="position: relative; height: 20px; top: -10px;">
+<div style="position: absolute; top: 0px; left: 10px; font-size: 11pt;">2009</div>
+<div style="position: absolute; top: 0px; left: 50px; font-size: 11pt;">2010</div>
+<div style="position: absolute; top: 0px; left: 90px; font-size: 11pt;">2011</div>
+<div style="position: absolute; top: 0px; left: 130px; font-size: 11pt;">2012</div>
+<div style="position: absolute; top: 0px; left: 170px; font-size: 11pt;">2013</div>
+<div style="position: absolute; top: 20px; left: 25px; width: 163px;"><div id="slider-time"></div></div>
+</div>
+
+<h3 style="margin-top: 20px;">Layers</h3>
 <form onsubmit="return false;">
-<p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
-<p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2"><input id="layer-CO2" class="layer-checkbox" type="checkbox"> Carbon dioxide</label>
+<p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
+<p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
+<p class="layer_checkbox" onclick="toggleState('flood', 'layer-flood');"><label for="layer-flood" onclick="toggleState('flood', 'layer-flood');"><input id="layer-flood" class="layer-checkbox" type="checkbox" checked="true"> <span style="color: red;">cloud</span>, <span style="color: green;">land</span>, <span style="color: blue;">water</span></label>
 </form>
 
-<h3 style="margin-bottom: 0px;">Points</h3>
+<h3 style="margin-bottom: 0px;">Latitude-longitude Points</h3>
 <form onsubmit="return false;">
+<p class="layer_checkbox" style="margin-bottom: 10px;">Source
+<select onchange="switchTables(this.selectedIndex);">
+<option value="MatsuLevel2LngLat" selected="true">limit-of-resolution entities</option>
+<option value="MatsuLevel2Clusters">CO2 clusters</option>
+</select>
+
 <p class="layer_checkbox" onclick="togglePoints('show-points');"><label for="show-points"><input id="show-points" type="checkbox" checked="true"> Show points</label>
+
+<p style="margin-left: 20px; margin-bottom: 0px;">Filter by "analyticsscore"
+<div style="margin-left: 25px; width: 163px; margin-top: 0px;"><div id="slider-points"></div></div>
+
 <p id="table-here" class="layer_checkbox" style="margin-top: 10px;"></p>
 
 </form>

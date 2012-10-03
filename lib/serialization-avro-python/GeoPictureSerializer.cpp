@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <avro/Stream.hh>
+#include <time.h>
 
 /*
  * PyVarObject_HEAD_INIT was added in Python 2.6.  Its use is
@@ -263,16 +264,26 @@ public:
   uint8_t i;
   bool endProcessed_;
 
-  MyInputStream(FILE *f, size_t chunkSize): file_(f), chunkSize_(chunkSize), byteCount_(0), i(0), endProcessed_(false) {
+  clock_t last_heartbeat;
+
+  MyInputStream(FILE *f, size_t chunkSize): file_(f), chunkSize_(chunkSize), byteCount_(0), i(0), endProcessed_(false), last_heartbeat(0) {
     rawdata_ = new uint8_t[chunkSize_];
     data_ = new uint8_t[chunkSize_];
   }
+
   ~MyInputStream() {
     delete [] rawdata_;
     delete [] data_;
   }
 
   bool next(const uint8_t **data, size_t *len) {
+    clock_t now = clock();
+    if (now - last_heartbeat > 10 * CLOCKS_PER_SEC) {
+      std::cerr << "GeoPictureSerializer::MyInputStream clock() = " << now << ", seconds since last_heartbeat = " << 1.0*(now - last_heartbeat)/CLOCKS_PER_SEC << std::endl;
+      std::cerr << "reporter:status:GeoPictureSerializer::MyInputStream clock() = " << now << ", seconds since last_heartbeat = " << 1.0*(now - last_heartbeat)/CLOCKS_PER_SEC << std::endl;
+      last_heartbeat = now;
+    }
+
     int valid = process();
     if (valid == 0) { return false; }
 

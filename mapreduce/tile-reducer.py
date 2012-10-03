@@ -7,6 +7,8 @@ import base64
 import json
 import math
 from math import floor
+import threading
+import time
 try:
     import ConfigParser as configparser
 except ImportError:
@@ -18,6 +20,21 @@ from scipy.ndimage.interpolation import affine_transform
 import jpype
 
 import GeoPictureSerializer
+
+producerVersion = [1, 0, 0]
+
+class Heartbeat:
+    def __init__(self, frequencyInSeconds=10.):
+        self.frequencyInSeconds = frequencyInSeconds
+        self.thread = threading.Thread(target=self.run, name="Heartbeat-0x%x" % id(self))
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        while True:
+            sys.stderr.write("Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            sys.stderr.write("reporter:status:Heartbeat at %s\n" % time.strftime("%H:%M:%S"))
+            time.sleep(self.frequencyInSeconds)
 
 def tileIndex(depth, longitude, latitude):
     "Inputs a depth and floating-point longitude and latitude, outputs a triple of index integers."
@@ -96,8 +113,12 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
                     maxPercent = 95.
                 maxRadiance = None
 
+            try:
+                dotPosition = line.index(".")
+            except ValueError:
+                dotPosition = -1
             tabPosition = line.index("\t")
-            key = line[:tabPosition]
+            key = line[dotPosition+1:tabPosition]
             value = line[tabPosition+1:-1]
 
             depth, longIndex, latIndex, timestamp = map(int, key.lstrip("T").split("-"))
@@ -105,6 +126,13 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
             try:
                 geoPicture = GeoPictureSerializer.deserialize(value)
             except IOError:
+                continue
+
+            bandsAvailable = True
+            for band in bands:
+                if band not in geoPicture.bands:
+                    bandsAvailable = False
+            if not bandsAvailable:
                 continue
 
             if mergeTimestamps:
@@ -223,7 +251,7 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write(outputKey, "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{\"analytic\": \"tile-producer\", \"version\": %s}" % str(producerVersion), buff.getvalue())
             if outputDirectory is not None:
                 image.save("%s/%s.png" % (outputDirectory, outputKey), "PNG", options="optimize")
             if outputStream is not None:
@@ -309,13 +337,15 @@ def collate(depth, tiles, outputAccumulo=None, outputDirectory=None, outputStrea
             if outputAccumulo is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write(outputKey, "{}", buff.getvalue())
+                outputAccumulo.write(outputKey, "{\"analytic\": \"tile-producer\", \"version\": %s}" % str(producerVersion), buff.getvalue())
             if outputStream is not None:
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
                 outputStream.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
 if __name__ == "__main__":
+    heartbeat = Heartbeat()
+
     config = configparser.ConfigParser()
     config.read(["../CONFIG.ini", "CONFIG.ini"])
 

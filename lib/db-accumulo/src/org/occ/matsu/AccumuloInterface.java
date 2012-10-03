@@ -55,6 +55,22 @@ public class AccumuloInterface {
 	scanner = connector.createScanner(tableName_, Constants.NO_AUTHS);
     }
 
+    public static ArrayList<String> getKeys(String low, String high) throws IOException {
+        scanner.setRange(new Range(low, high));
+        
+        ArrayList<String> output = new ArrayList<String>();
+        String lastrow = null;
+        for (Entry<Key, Value> entry : scanner) {
+            String entryrow = entry.getKey().getRow().toString();
+            if (lastrow == null  ||  !entryrow.equals(lastrow)) {
+                output.add(entryrow);
+            }
+            lastrow = entryrow;
+        }
+
+        return output;
+    }
+
     public static byte[] readL2png(String key) throws IOException {
 	scanner.setRange(new Range(key));
 
@@ -162,6 +178,10 @@ public class AccumuloInterface {
 	mutation.put(columnFamily, new Text("metadata"), new Value(metadata.getBytes()));
 	mutation.put(columnFamily, new Text("l2png"), new Value(l2png));
 	batchWriter.addMutation(mutation);
+    }
+
+    public static void flush() throws MutationsRejectedException {
+        multiTableBatchWriter.flush();
     }
 
     public static void lnglat_write(String key, double longitude, double latitude, String metadata) throws MutationsRejectedException {
