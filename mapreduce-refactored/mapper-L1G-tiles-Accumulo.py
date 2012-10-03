@@ -126,7 +126,7 @@ def removeBands(geoPicture, outgoingBandRestriction):
 
 ################################################################################## tiling procedure
 
-def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, verbose=False):
+def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, heartbeat=None):
     outputGeoPictures = []
 
     # convert GeoTIFF coordinates into degrees
@@ -166,8 +166,8 @@ def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeS
             upLong, upLat, altitude           = coordinateTransform.TransformPoint(tlx + 0.5*weres*rasterXSize, tly + bottom*nsres*rasterYSize)
             downLong, downLat, altitude       = coordinateTransform.TransformPoint(tlx + 0.5*weres*rasterXSize, tly + thetop*nsres*rasterYSize)
 
-            if verbose:
-                sys.stderr.write("%s About to make tile %s, centered on lat=%.3f&lng=%.3f&z=10...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
+            if heartbeat is not None:
+                heartbeat.write("%s About to make tile %s, centered on lat=%.3f&lng=%.3f&z=10...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
 
             # do some linear algebra to convert coordinates
             L2PNG_to_geo_trans = numpy.matrix([[(latmin - latmax)/float(latpixels), 0.], [0., (longmax - longmin)/float(longpixels)]])
@@ -345,7 +345,8 @@ def makeImage(geoPicture, layer, bands, outputType, minRadiance, maxRadiance):
 ################################################################################## entry point
 
 if __name__ == "__main__":
-    sys.stderr.write("%s Enter mapper-L1G-tiles-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
+    heartbeat = Heartbeat(stdout=True, stderr=True, reporter=True)
+    heartbeat.write("%s Enter mapper-L1G-tiles-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     osr.UseExceptions()
 
@@ -355,18 +356,18 @@ if __name__ == "__main__":
     modules = json.loads(config.get("DEFAULT", "mapper.modules"))
     if modules == []: modules = None
 
-    sys.stderr.write("%s About to load modules...\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s About to load modules...\n" % time.strftime("%H:%M:%S"))
     loadedModules = loadModules(modules)
 
     useSequenceFiles = (config.get("DEFAULT", "mapper.useSequenceFiles").lower() == "true")
     if useSequenceFiles:
-        sys.stderr.write("%s About to load a SequenceFile...\n" % time.strftime("%H:%M:%S"))
+        heartbeat.write("%s About to load a SequenceFile...\n" % time.strftime("%H:%M:%S"))
         incomingBandRestriction = json.loads(config.get("DEFAULT", "mapper.incomingBandRestriction"))
         if incomingBandRestriction is not None:
             incomingBandRestriction = set(incomingBandRestriction)
         geoPicture = inputSequenceFile(sys.stdin, incomingBandRestriction)
     else:
-        sys.stderr.write("%s About to load a one-line serialized file...\n" % time.strftime("%H:%M:%S"))
+        heartbeat.write("%s About to load a one-line serialized file...\n" % time.strftime("%H:%M:%S"))
         geoPicture = inputOneLine(sys.stdin)
 
     geoPicture.metadata["timestamp"] = time.mktime(datetime.datetime.strptime(json.loads(geoPicture.metadata["L1T"])["PRODUCT_METADATA"]["START_TIME"], "%Y %j %H:%M:%S").timetuple())
@@ -376,14 +377,14 @@ if __name__ == "__main__":
     inputBands = geoPicture.bands[:]   # no virtual bands
 
     for i, newBand in enumerate(loadedModules):
-        sys.stderr.write("%s About to run module %d...\n" % (time.strftime("%H:%M:%S"), i))
+        heartbeat.write("%s About to run module %d...\n" % (time.strftime("%H:%M:%S"), i))
         geoPicture = newBand(geoPicture)
 
     outgoingBandRestriction = json.loads(config.get("DEFAULT", "mapper.outgoingBandRestriction"))
     if outgoingBandRestriction is not None:
         outgoingBandRestriction = set(outgoingBandRestriction)
 
-    sys.stderr.write("%s About to remove unnecessary bands...\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s About to remove unnecessary bands...\n" % time.strftime("%H:%M:%S"))
     geoPicture = removeBands(geoPicture, outgoingBandRestriction)
 
     depth = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
@@ -392,8 +393,8 @@ if __name__ == "__main__":
     numLatitudeSections = int(config.get("DEFAULT", "mapper.numberOfLatitudeSections"))
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
 
-    sys.stderr.write("%s About to make tiles...\n" % time.strftime("%H:%M:%S"))
-    geoPictureTiles = makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, verbose=True)
+    heartbeat.write("%s About to make tiles...\n" % time.strftime("%H:%M:%S"))
+    geoPictureTiles = makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, heartbeat=heartbeat)
 
     configuration = json.loads(config.get("DEFAULT", "reducer.configuration"))
     outputToAccumulo = (config.get("DEFAULT", "reducer.outputToAccumulo").lower() == "true")
@@ -402,7 +403,7 @@ if __name__ == "__main__":
     outputToStdOut = (config.get("DEFAULT", "reducer.outputToStdOut").lower() == "true")
 
     if outputToAccumulo:
-        sys.stderr.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
+        heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
         JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
         ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
         ACCUMULO_DB_NAME = config.get("DEFAULT", "accumulo.db_name")
@@ -418,10 +419,10 @@ if __name__ == "__main__":
             raise RuntimeError(exception.stacktrace())
 
     for i, geoPictureTile in enumerate(geoPictureTiles):
-        sys.stderr.write("%s About to make images for tile %s...\n" % (time.strftime("%H:%M:%S"), geoPictureTile.metadata["tileName"]))
+        heartbeat.write("%s About to make images for tile %s...\n" % (time.strftime("%H:%M:%S"), geoPictureTile.metadata["tileName"]))
 
         for config in configuration:
-            sys.stderr.write("%s     layer %s\n" % (time.strftime("%H:%M:%S"), config["layer"]))
+            heartbeat.write("%s     layer %s\n" % (time.strftime("%H:%M:%S"), config["layer"]))
 
             image = makeImage(geoPictureTile, config["layer"], config["bands"], config["outputType"], config["minRadiance"], config["maxRadiance"])
             if image is None: continue
@@ -429,7 +430,7 @@ if __name__ == "__main__":
             outputKey = "%s-%s-%010d" % (geoPictureTile.metadata["tileName"], config["layer"], geoPictureTile.metadata["timestamp"])
 
             if outputToAccumulo:
-                sys.stderr.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
+                heartbeat.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
                 try:
@@ -438,19 +439,19 @@ if __name__ == "__main__":
                     raise RuntimeError(exception.stacktrace())
 
             if outputToLocalDirectory:
-                sys.stderr.write("%s     write to local filesystem with path %s/%s.png\n" % (time.strftime("%H:%M:%S"), outputDirectoryName, outputKey))
+                heartbeat.write("%s     write to local filesystem with path %s/%s.png\n" % (time.strftime("%H:%M:%S"), outputDirectoryName, outputKey))
                 image.save("%s/%s.png" % (outputDirectoryName, outputKey), "PNG", options="optimize")
 
             if outputToStdOut:
-                sys.stderr.write("%s     write to standard output with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
+                heartbeat.write("%s     write to standard output with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
                 sys.stdout.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
-    sys.stderr.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
 
     if outputToAccumulo:
-        sys.stderr.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
+        heartbeat.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
         try:
             AccumuloInterface.finishedWriting()
         except jpype.JavaException as exception:

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys
 import time
 import struct
 from io import BytesIO
@@ -33,14 +32,16 @@ def makeParentChildMap(keylist):
 
     return parentKeys
 
-def collate(keylist, AccumuloInterface, splineOrder, verbose=False):
+def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
     parentToChildMap = makeParentChildMap(keylist)
     for parentKey, childKeys in parentToChildMap.items():
-        sys.stderr.write("%s Building %s from %s...\n" % (time.strftime("%H:%M:%S"), parentKey, str(childKeys)))
+        if heartbeat is not None:
+            heartbeat.write("%s Building %s from %s...\n" % (time.strftime("%H:%M:%S"), parentKey, str(childKeys)))
 
         childImages = []
         for key in childKeys:
-            sys.stderr.write("%s     loading %s...\n" % (time.strftime("%H:%M:%S"), str(childKeys)))
+            if heartbeat is not None:
+                heartbeat.write("%s     loading %s...\n" % (time.strftime("%H:%M:%S"), str(childKeys)))
 
             try:
                 l2pngBytes = AccumuloInterface.readL2png(key)
@@ -50,7 +51,8 @@ def collate(keylist, AccumuloInterface, splineOrder, verbose=False):
             buff = BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes))
             childImages.append(numpy.asarray(Image.open(buff)))
 
-        sys.stderr.write("%s     shrinking and overlaying %d images...\n" % (time.strftime("%H:%M:%S"), len(childKeys)))
+        if heartbeat is not None:
+            heartbeat.write("%s     shrinking and overlaying %d images...\n" % (time.strftime("%H:%M:%S"), len(childKeys)))
 
         rasterYSize, rasterXSize = childImages[0].shape[0:2]
         outputRed = numpy.zeros((rasterYSize, rasterXSize), dtype=numpy.uint8)
@@ -96,7 +98,8 @@ def collate(keylist, AccumuloInterface, splineOrder, verbose=False):
         buff = BytesIO()
         parentImage.save(buff, "PNG", options="optimize")
 
-        sys.stderr.write("%s     writing to Accumulo key %s...\n" % (time.strftime("%H:%M:%S"), parentKey))
+        if heartbeat is not None:
+            heartbeat.write("%s     writing to Accumulo key %s...\n" % (time.strftime("%H:%M:%S"), parentKey))
 
         try:
             AccumuloInterface.write(parentKey, "{}", buff.getvalue())
@@ -113,12 +116,13 @@ def collate(keylist, AccumuloInterface, splineOrder, verbose=False):
 ################################################################################## entry point
 
 if __name__ == "__main__":
-    sys.stderr.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
+    heartbeat = Heartbeat(stdout=True, stderr=True, reporter=True)
+    heartbeat.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     config = configparser.ConfigParser()
     config.read(["../CONFIG.ini", "CONFIG.ini"])
 
-    sys.stderr.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
     ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
     ACCUMULO_DB_NAME = config.get("DEFAULT", "accumulo.db_name")
@@ -138,7 +142,7 @@ if __name__ == "__main__":
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 
-    sys.stderr.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
+    heartbeat.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
     keys = {}
     try:
         keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
@@ -150,13 +154,13 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    sys.stderr.write("%s Collating up to T%02d-xxxxx-yyyyy...\n" % (time.strftime("%H:%M:%S"), zoomDepthWidest))
+    heartbeat.write("%s Collating up to T%02d-xxxxx-yyyyy...\n" % (time.strftime("%H:%M:%S"), zoomDepthWidest))
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
     for depth in xrange(zoomDepthNarrowest, zoomDepthWidest, -1):
-        keys[depth - 1] = collate(keys[depth], AccumuloInterface, splineOrder, verbose=True)
+        keys[depth - 1] = collate(keys[depth], AccumuloInterface, splineOrder, heartbeat=heartbeat)
 
-    sys.stderr.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
-    sys.stderr.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
+    heartbeat.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
     try:
         AccumuloInterface.finishedWriting()
     except jpype.JavaException as exception:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 from math import floor
 
 def tileIndex(depth, longitude, latitude):  
@@ -32,3 +33,17 @@ def tileParent(depth, longIndex, latIndex):
 def tileOffset(depth, longIndex, latIndex):
     "Returns the corner this tile occupies in its parent's frame."
     return longIndex % 2, latIndex % 2
+
+class Heartbeat:
+    def __init__(self, stdout=True, stderr=True, reporter=True):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.reporter = reporter
+
+    def write(self, message):
+        if self.stdout:
+            sys.stdout.write(message)
+        if self.stderr:
+            sys.stderr.write(message)
+        if self.reporter:
+            sys.stderr.write("reporter:status:" + message)
