@@ -34,20 +34,26 @@ def makeParentChildMap(keylist):
 
 def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
     parentToChildMap = makeParentChildMap(keylist)
+    number = 0
+    outOf = len(parentToChildMap)
     for parentKey, childKeys in parentToChildMap.items():
+        number += 1
         if heartbeat is not None:
-            heartbeat.write("%s Building %s from %s...\n" % (time.strftime("%H:%M:%S"), parentKey, str(childKeys)))
+            heartbeat.write("%s %d/%d: Building %s from %s...\n" % (time.strftime("%H:%M:%S"), number, outOf, parentKey, str(childKeys)))
 
         childImages = []
         for key in childKeys:
             if heartbeat is not None:
-                heartbeat.write("%s     loading %s...\n" % (time.strftime("%H:%M:%S"), str(childKeys)))
+                heartbeat.write("%s     loading %s...\n" % (time.strftime("%H:%M:%S"), key))
 
             try:
                 l2pngBytes = AccumuloInterface.readL2png(key)
             except jpype.JavaException as exception:
                 raise RuntimeError(exception.stacktrace())
-            
+
+            if heartbeat is not None:
+                heartbeat.write("%s     converting %s...\n" % (time.strftime("%H:%M:%S"), key))
+
             buff = BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes))
             childImages.append(numpy.asarray(Image.open(buff)))
 
@@ -106,6 +112,9 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
 
+    if heartbeat is not None:
+        heartbeat.write("%s     flushing Accumulo...\n" % time.strftime("%H:%M:%S"))
+
     try:
         AccumuloInterface.flush()
     except jpype.JavaException as exception:
@@ -116,7 +125,7 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
 ################################################################################## entry point
 
 if __name__ == "__main__":
-    heartbeat = Heartbeat(stdout=True, stderr=True, reporter=True)
+    heartbeat = Heartbeat(stdout=False, stderr=True, reporter=False)
     heartbeat.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     config = configparser.ConfigParser()
@@ -157,7 +166,11 @@ if __name__ == "__main__":
     heartbeat.write("%s Collating up to T%02d-xxxxx-yyyyy...\n" % (time.strftime("%H:%M:%S"), zoomDepthWidest))
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
     for depth in xrange(zoomDepthNarrowest, zoomDepthWidest, -1):
+        heartbeat.write("%s About to merge %d images for T%02d -> T%02d...\n" % (time.strftime("%H:%M:%S"), len(keys[depth]), depth, depth - 1))
+        beforeTime = time.time()
         keys[depth - 1] = collate(keys[depth], AccumuloInterface, splineOrder, heartbeat=heartbeat)
+        afterTime = time.time()
+        heartbeat.write("%s It took %g minutes to merge %d images.\n" % (time.strftime("%H:%M:%S"), (afterTime - beforeTime)/60., len(keys[depth])))
 
     heartbeat.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
     heartbeat.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))

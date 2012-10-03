@@ -345,7 +345,7 @@ def makeImage(geoPicture, layer, bands, outputType, minRadiance, maxRadiance):
 ################################################################################## entry point
 
 if __name__ == "__main__":
-    heartbeat = Heartbeat(stdout=True, stderr=True, reporter=True)
+    heartbeat = Heartbeat(stdout=False, stderr=True, reporter=True)
     heartbeat.write("%s Enter mapper-L1G-tiles-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     osr.UseExceptions()
