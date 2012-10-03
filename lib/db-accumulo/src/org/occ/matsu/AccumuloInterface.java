@@ -62,7 +62,7 @@ public class AccumuloInterface {
         String lastrow = null;
         for (Entry<Key, Value> entry : scanner) {
             String entryrow = entry.getKey().getRow().toString();
-            if (lastrow == null  ||  !entryrow.equal(lastrow)) {
+            if (lastrow == null  ||  !entryrow.equals(lastrow)) {
                 output.add(entryrow);
             }
             lastrow = entryrow;
@@ -178,6 +178,10 @@ public class AccumuloInterface {
 	mutation.put(columnFamily, new Text("metadata"), new Value(metadata.getBytes()));
 	mutation.put(columnFamily, new Text("l2png"), new Value(l2png));
 	batchWriter.addMutation(mutation);
+    }
+
+    public static void flush() throws MutationsRejectedException {
+        multiTableBatchWriter.flush();
     }
 
     public static void lnglat_write(String key, double longitude, double latitude, String metadata) throws MutationsRejectedException {

@@ -585,7 +585,7 @@ function switchTables(index) {
 <form onsubmit="return false;">
 <p class="layer_checkbox" style="margin-bottom: 10px;">Source
 <select onchange="switchTables(this.selectedIndex);">
-<option value="MatsuLevel2LngLat" selected="true">limit-of-resolution spots</option>
+<option value="MatsuLevel2LngLat" selected="true">limit-of-resolution entities</option>
 <option value="MatsuLevel2Clusters">CO2 clusters</option>
 </select>
 

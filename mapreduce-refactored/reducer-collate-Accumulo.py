@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import sys
+import time
+import struct
 from io import BytesIO
 try:
     import ConfigParser as configparser
@@ -7,25 +10,32 @@ except ImportError:
     import configparser
 
 import jpype
+from PIL import Image
+import numpy
+from scipy.ndimage.interpolation import affine_transform
 
 from utilities import *
 
 ################################################################################## collate
 
-def makeParentKeys(keys):
+def makeParentChildMap(keylist):
     parentKeys = {}
-    for key in keys:
+    for key in keylist:
         depth, longIndex, latIndex, layer, timestamp = key.split("-")
+        depth = int(depth[1:])
+        longIndex = int(longIndex)
+        latIndex = int(latIndex)
 
-        parentKey = "%s-%s" % (tileName(*tileParent(depth, longIndex, latIndex)), timestamp)
+        parentKey = "%s-%s-%s" % (tileName(*tileParent(depth, longIndex, latIndex)), layer, timestamp)
         if parentKey not in parentKeys:
             parentKeys[parentKey] = []
         parentKeys[parentKey].append(key)
 
     return parentKeys
 
-def collate(keys, AccumuloInterface, splineOrder, verbose=False):
-    for parentKey, childKeys in makeParentKeys(keys).items():
+def collate(keylist, AccumuloInterface, splineOrder, verbose=False):
+    parentToChildMap = makeParentChildMap(keylist)
+    for parentKey, childKeys in parentToChildMap.items():
         sys.stderr.write("%s Building %s from %s...\n" % (time.strftime("%H:%M:%S"), parentKey, str(childKeys)))
 
         childImages = []
@@ -36,31 +46,38 @@ def collate(keys, AccumuloInterface, splineOrder, verbose=False):
                 l2pngBytes = AccumuloInterface.readL2png(key)
             except jpype.JavaException as exception:
                 raise RuntimeError(exception.stacktrace())
-
-            buff = BytesIO(l2pngBytes)
+            
+            buff = BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes))
             childImages.append(numpy.asarray(Image.open(buff)))
 
         sys.stderr.write("%s     shrinking and overlaying %d images...\n" % (time.strftime("%H:%M:%S"), len(childKeys)))
 
-        shape = childImages[0].shape
-        outputRed = numpy.zeros(shape, dtype=numpy.uint8)
-        outputGreen = numpy.zeros(shape, dtype=numpy.uint8)
-        outputBlue = numpy.zeros(shape, dtype=numpy.uint8)
-        outputMask = numpy.zeros(shape, dtype=numpy.uint8)
+        rasterYSize, rasterXSize = childImages[0].shape[0:2]
+        outputRed = numpy.zeros((rasterYSize, rasterXSize), dtype=numpy.uint8)
+        outputGreen = numpy.zeros((rasterYSize, rasterXSize), dtype=numpy.uint8)
+        outputBlue = numpy.zeros((rasterYSize, rasterXSize), dtype=numpy.uint8)
+        outputMask = numpy.zeros((rasterYSize, rasterXSize), dtype=numpy.uint8)
             
-        for image in childImages:
-            rasterYSize, rasterXSize = outputRed.shape
-            inputRed, inputGreen, inputBlue, inputMask = image
+        for key, image in zip(childKeys, childImages):
+            inputRed = image[:,:,0]
+            inputGreen = image[:,:,1]
+            inputBlue = image[:,:,2]
+            inputMask = image[:,:,3]
 
             trans = numpy.matrix([[2., 0.], [0., 2.]])
             offset = 0., 0.
 
-            affine_transform(inputRed, trans, offset, (rasterYSize, rasterXSize), inputRed, splineOrder)
-            affine_transform(inputGreen, trans, offset, (rasterYSize, rasterXSize), inputGreen, splineOrder)
-            affine_transform(inputBlue, trans, offset, (rasterYSize, rasterXSize), inputBlue, splineOrder)
-            affine_transform(inputMask, trans, offset, (rasterYSize, rasterXSize), inputMask, splineOrder)
+            inputRed = affine_transform(inputRed, trans, offset, (rasterYSize, rasterXSize), None, splineOrder)
+            inputGreen = affine_transform(inputGreen, trans, offset, (rasterYSize, rasterXSize), None, splineOrder)
+            inputBlue = affine_transform(inputBlue, trans, offset, (rasterYSize, rasterXSize), None, splineOrder)
+            inputMask = affine_transform(inputMask, trans, offset, (rasterYSize, rasterXSize), None, splineOrder)
 
-            longOffset, latOffset = tileOffset(depthIndex, longIndex, latIndex)
+            depth, longIndex, latIndex, layer, timestamp = key.split("-")
+            depth = int(depth[1:])
+            longIndex = int(longIndex)
+            latIndex = int(latIndex)
+
+            longOffset, latOffset = tileOffset(depth, longIndex, latIndex)
             if longOffset == 0:
                 longSlice = slice(0, rasterXSize/2)
             else:
@@ -82,9 +99,16 @@ def collate(keys, AccumuloInterface, splineOrder, verbose=False):
         sys.stderr.write("%s     writing to Accumulo key %s...\n" % (time.strftime("%H:%M:%S"), parentKey))
 
         try:
-            outputAccumulo.write(parentKey, "{}", buff.getvalue())
+            AccumuloInterface.write(parentKey, "{}", buff.getvalue())
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
+
+    try:
+        AccumuloInterface.flush()
+    except jpype.JavaException as exception:
+        raise RuntimeError(exception.stacktrace())
+    
+    return parentToChildMap.keys()
 
 ################################################################################## entry point
 
@@ -105,7 +129,7 @@ if __name__ == "__main__":
     try:
         jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
         AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
-        AccumuloInterface = AccumuloInterface.connectForReading(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
+        AccumuloInterface.connectForReading(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
@@ -114,16 +138,26 @@ if __name__ == "__main__":
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 
-    sys.stderr.write("%s Extracting all level %02d keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
+    sys.stderr.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
     keys = {}
     try:
-        keys[zoomDepthNarrowest] = getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
+        keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    sys.stderr.write("%s Collating up to level %02d...\n" % (time.strftime("%H:%M:%S"), zoomDepthWidest))
+    try:
+        AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
+    except jpype.JavaException as exception:
+        raise RuntimeError(exception.stacktrace())
+
+    sys.stderr.write("%s Collating up to T%02d-xxxxx-yyyyy...\n" % (time.strftime("%H:%M:%S"), zoomDepthWidest))
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
     for depth in xrange(zoomDepthNarrowest, zoomDepthWidest, -1):
-        collate(keys, AccumuloInterface, splineOrder, verbose=True)
+        keys[depth - 1] = collate(keys[depth], AccumuloInterface, splineOrder, verbose=True)
 
     sys.stderr.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
+    sys.stderr.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
+    try:
+        AccumuloInterface.finishedWriting()
+    except jpype.JavaException as exception:
+        raise RuntimeError(exception.stacktrace())
