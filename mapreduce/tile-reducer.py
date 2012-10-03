@@ -99,6 +99,13 @@ def reduce_tiles(tiles, inputStream, outputAccumulo=None, outputDirectory=None, 
             minRadiance = config["minRadiance"]
             maxRadiance = config["maxRadiance"]
 
+            bandsAvailable = True
+            for band in bands:
+                if band not in geoPicture.bands:
+                    bandsAvailable = False
+            if not bandsAvailable:
+                continue  # on to the next configuration, or the next tile
+
             if isinstance(minRadiance, basestring) and minRadiance[-1] == "%":
                 try:
                     minPercent = float(minRadiance[:-1])

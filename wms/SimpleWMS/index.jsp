@@ -578,6 +578,7 @@ function switchTables(index) {
 <form onsubmit="return false;">
 <p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
 <p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
+<p class="layer_checkbox" onclick="toggleState('flood', 'layer-flood');"><label for="layer-flood" onclick="toggleState('flood', 'layer-flood');"><input id="layer-flood" class="layer-checkbox" type="checkbox" checked="true"> <span style="color: red;">cloud</span>, <span style="color: green;">land</span>, <span style="color: blue;">water</span></label>
 </form>
 
 <h3 style="margin-bottom: 0px;">Latitude-longitude Points</h3>
