@@ -167,7 +167,7 @@ def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeS
             downLong, downLat, altitude       = coordinateTransform.TransformPoint(tlx + 0.5*weres*rasterXSize, tly + thetop*nsres*rasterYSize)
 
             if verbose:
-                sys.stderr.write("%s About to make tile %s, centered on lat=%.1f&lng=%.1f&z=10...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
+                sys.stderr.write("%s About to make tile %s, centered on lat=%.3f&lng=%.3f&z=10...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
 
             # do some linear algebra to convert coordinates
             L2PNG_to_geo_trans = numpy.matrix([[(latmin - latmax)/float(latpixels), 0.], [0., (longmax - longmin)/float(longpixels)]])
@@ -220,10 +220,10 @@ def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeS
 
             outputGeoPicture = GeoPictureSerializer.GeoPicture()
             outputGeoPicture.picture = numpy.dstack(outputBands)
-            outputGeoPicture.metadata = geoPicture.metadata
+            outputGeoPicture.metadata = dict(geoPicture.metadata)
             outputGeoPicture.bands = geoPicture.bands + ["MASK"]
 
-            outputGeoPicture.metadata.update({"depth": depth, "longIndex": x, "latIndex": y, "tileName": tileName(*ti), "geoCenter": "lat=%.1f&lng=%.1f&z=10" % (originLat, originLong)})
+            outputGeoPicture.metadata.update({"depth": depth, "longIndex": x, "latIndex": y, "tileName": tileName(*ti), "geoCenter": "lat=%.3f&lng=%.3f&z=10" % (originLat, originLong)})
 
             outputGeoPictures.append(outputGeoPicture)
 
@@ -249,7 +249,7 @@ def radianceRange(minRadiance, maxRadiance, geoPicture, bandArrays):
     if maxRadiance == "sun":
         l1t = json.loads(geoPicture.metadata["L1T"])
         sunAngle = math.sin(float(l1t["PRODUCT_PARAMETERS"]["SUN_ELEVATION"]) * math.pi/180.)
-        maxRadiance = sunAngle * 500.
+        maxRadiance = sunAngle * 400.
         if maxRadiance < 10.:
             maxRadiance = 10.
 
@@ -424,6 +424,7 @@ if __name__ == "__main__":
             sys.stderr.write("%s     layer %s\n" % (time.strftime("%H:%M:%S"), config["layer"]))
 
             image = makeImage(geoPictureTile, config["layer"], config["bands"], config["outputType"], config["minRadiance"], config["maxRadiance"])
+            if image is None: continue
 
             outputKey = "%s-%s-%010d" % (geoPictureTile.metadata["tileName"], config["layer"], geoPictureTile.metadata["timestamp"])
 

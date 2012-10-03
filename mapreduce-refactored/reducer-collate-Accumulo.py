@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
 from io import BytesIO
+try:
+    import ConfigParser as configparser
+except ImportError:
+    import configparser
 
 import jpype
 
@@ -86,6 +90,9 @@ def collate(keys, AccumuloInterface, splineOrder, verbose=False):
 
 if __name__ == "__main__":
     sys.stderr.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
+
+    config = configparser.ConfigParser()
+    config.read(["../CONFIG.ini", "CONFIG.ini"])
 
     sys.stderr.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
