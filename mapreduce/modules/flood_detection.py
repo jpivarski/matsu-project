@@ -1,15 +1,6 @@
 import numpy
 import time
 
-import rpy2.robjects as robjects
-import rpy2.robjects.numpy2ri
-
-
-rpy2.robjects.numpy2ri.activate()
-
-import json
-import GeoPictureSerializer
-
 import sys
 
 class RedirectStdStreams(object):
@@ -27,6 +18,13 @@ class RedirectStdStreams(object):
         sys.stdout = self.old_stdout
         sys.stderr = self.old_stderr
 
+import rpy2.robjects as robjects
+import rpy2.robjects.numpy2ri
+
+rpy2.robjects.numpy2ri.activate()
+
+import json
+import GeoPictureSerializer
 
 def newBand(geoPicture):
   with RedirectStdStreams(stdout=sys.stderr, stderr=sys.stderr):
@@ -101,10 +99,11 @@ def newBand(geoPicture):
     dataColumns = 'c' + str( tuple( dataColumns ) )
     robjects.r('trainingSet <- trainingSet[ ,' + dataColumns + ']')
     #construct svm from training data
-    robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 10000, gamma = 0.001)')
+    # robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 10000, gamma = 0.001)')
+    robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 1000, kernel = "linear")')
 
     #classify this image 1=cloud, 2=land(desert), 3=water, 4=land(vegetation)
-    classVector = classify(2*imageArray[:,2:], presentBandsNum)
+    classVector = classify(imageArray[:,2:], presentBandsNum)
 
     #Enumerate the classes contained in this vector
     U, Uindices = numpy.unique(classVector, return_inverse=True)
@@ -122,7 +121,7 @@ def newBand(geoPicture):
                                                                                    #summing compresses multiple bands into one, 
                                                                                    #without losing information.
 
-    imageArrayFinal = imageArrayFinal[:,:,0:3] * numpy.array( [[[1.,2.,3.]]] )
+    imageArrayFinal = numpy.array(imageArrayFinal[:,:,0:3] * numpy.array( [[[1.,2.,3.]]] ),dtype=numpy.float)
 
     geoPicture.bands.extend(["CLOUDS","LAND","WATER"])
 
@@ -192,15 +191,15 @@ def rescaleALI(metaData, imgArray, availableBandsNum):
 
     #Rescale ALI image data
     radianceScaling = metaData['RADIANCE_SCALING']
-    bandScaling = numpy.zeros(len(availableBandsNum))
-    bandOffset = numpy.zeros(len(availableBandsNum))
+    bandScaling = numpy.zeros((1,1,availableBandsNum.size))
+    bandOffset = numpy.zeros((1,1,availableBandsNum.size))
 
     for i in numpy.arange(availableBandsNum.size):
-        bandScaling[i] = float(radianceScaling['BAND' + str(availableBandsNum[i]) + '_SCALING_FACTOR'])
-        bandOffset[i] = float(radianceScaling['BAND' + str(availableBandsNum[i]) + '_OFFSET'])
+        bandScaling[0,0,i] = float(radianceScaling['BAND' + str(availableBandsNum[i]) + '_SCALING_FACTOR'])
+        bandOffset[0,0,i] = float(radianceScaling['BAND' + str(availableBandsNum[i]) + '_OFFSET'])
 
     #scaling and offset
-    return (imgArray * 300. * bandScaling) + bandOffset
+    return (imgArray * 30. * bandScaling) + bandOffset
 
 
 def geometricCorrection(imgArray, metaData):
