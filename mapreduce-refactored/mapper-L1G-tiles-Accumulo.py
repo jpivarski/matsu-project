@@ -342,10 +342,10 @@ def makeImage(geoPicture, layer, bands, outputType, minRadiance, maxRadiance):
 
     return Image.fromarray(numpy.dstack((outputRed, outputGreen, outputBlue, outputMask)))
 
-##################################################################################
+################################################################################## entry point
 
 if __name__ == "__main__":
-    sys.stderr.write("%s Enter mapperTilesToAccumulo.py...\n" % time.strftime("%H:%M:%S"))
+    sys.stderr.write("%s Enter mapper-L1G-tiles-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     osr.UseExceptions()
 
@@ -402,6 +402,7 @@ if __name__ == "__main__":
     outputToStdOut = (config.get("DEFAULT", "reducer.outputToStdOut").lower() == "true")
 
     if outputToAccumulo:
+        sys.stderr.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
         JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
         ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
         ACCUMULO_DB_NAME = config.get("DEFAULT", "accumulo.db_name")
@@ -409,10 +410,13 @@ if __name__ == "__main__":
         ACCUMULO_USER_NAME = config.get("DEFAULT", "accumulo.user_name")
         ACCUMULO_PASSWORD = config.get("DEFAULT", "accumulo.password")
         ACCUMULO_TABLE_NAME = config.get("DEFAULT", "accumulo.table_name")
-        jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
-        AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
-        AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
-        
+        try:
+            jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
+            AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
+            AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
+        except jpype.JavaException as exception:
+            raise RuntimeError(exception.stacktrace())
+
     for i, geoPictureTile in enumerate(geoPictureTiles):
         sys.stderr.write("%s About to make images for tile %s...\n" % (time.strftime("%H:%M:%S"), geoPictureTile.metadata["tileName"]))
 
@@ -421,13 +425,16 @@ if __name__ == "__main__":
 
             image = makeImage(geoPictureTile, config["layer"], config["bands"], config["outputType"], config["minRadiance"], config["maxRadiance"])
 
-            outputKey = "%s-%s-%d" % (geoPictureTile.metadata["tileName"], config["layer"], geoPictureTile.metadata["timestamp"])
+            outputKey = "%s-%s-%010d" % (geoPictureTile.metadata["tileName"], config["layer"], geoPictureTile.metadata["timestamp"])
 
             if outputToAccumulo:
                 sys.stderr.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
                 buff = BytesIO()
                 image.save(buff, "PNG", options="optimize")
-                outputAccumulo.write(outputKey, json.dumps(geoPictureTile.metadata), buff.getvalue())
+                try:
+                    AccumuloInterface.write(outputKey, json.dumps(geoPictureTile.metadata), buff.getvalue())
+                except jpype.JavaException as exception:
+                    raise RuntimeError(exception.stacktrace())
 
             if outputToLocalDirectory:
                 sys.stderr.write("%s     write to local filesystem with path %s/%s.png\n" % (time.strftime("%H:%M:%S"), outputDirectoryName, outputKey))
@@ -443,4 +450,7 @@ if __name__ == "__main__":
 
     if outputToAccumulo:
         sys.stderr.write("%s     shut down Accumulo\n" % time.strftime("%H:%M:%S"))
-        AccumuloInterface.finishedWriting()
+        try:
+            AccumuloInterface.finishedWriting()
+        except jpype.JavaException as exception:
+            raise RuntimeError(exception.stacktrace())

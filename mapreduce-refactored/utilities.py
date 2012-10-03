@@ -32,5 +32,3 @@ def tileParent(depth, longIndex, latIndex):
 def tileOffset(depth, longIndex, latIndex):
     "Returns the corner this tile occupies in its parent's frame."
     return longIndex % 2, latIndex % 2
-
-
