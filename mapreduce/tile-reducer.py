@@ -21,7 +21,7 @@ import jpype
 
 import GeoPictureSerializer
 
-producerVersion = [1, 0, 0]
+producerVersion = [0, 8, 0]
 
 class Heartbeat:
     def __init__(self, frequencyInSeconds=10.):
