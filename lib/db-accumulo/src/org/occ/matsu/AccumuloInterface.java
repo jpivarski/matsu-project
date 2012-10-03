@@ -55,6 +55,22 @@ public class AccumuloInterface {
 	scanner = connector.createScanner(tableName_, Constants.NO_AUTHS);
     }
 
+    public static ArrayList<String> getKeys(String low, String high) throws IOException {
+        scanner.setRange(new Range(low, high));
+        
+        ArrayList<String> output = new ArrayList<String>();
+        String lastrow = null;
+        for (Entry<Key, Value> entry : scanner) {
+            String entryrow = entry.getKey().getRow().toString();
+            if (lastrow == null  ||  !entryrow.equal(lastrow)) {
+                output.add(entryrow);
+            }
+            lastrow = entryrow;
+        }
+
+        return output;
+    }
+
     public static byte[] readL2png(String key) throws IOException {
 	scanner.setRange(new Range(key));
 
