@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import time
 import struct
 from io import BytesIO
@@ -54,8 +55,7 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
             if heartbeat is not None:
                 heartbeat.write("%s     converting %s...\n" % (time.strftime("%H:%M:%S"), key))
 
-            buff = BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes))
-            childImages.append(numpy.asarray(Image.open(buff)))
+            childImages.append(numpy.asarray(Image.open(BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes)))))
 
         if heartbeat is not None:
             heartbeat.write("%s     shrinking and overlaying %d images...\n" % (time.strftime("%H:%M:%S"), len(childKeys)))
@@ -151,12 +151,17 @@ if __name__ == "__main__":
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 
-    heartbeat.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
-    keys = {}
-    try:
-        keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
-    except jpype.JavaException as exception:
-        raise RuntimeError(exception.stacktrace())
+    # heartbeat.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
+    # keys = {}
+    # try:
+    #     keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
+    # except jpype.JavaException as exception:
+    #     raise RuntimeError(exception.stacktrace())
+
+    keys = {zoomDepthNarrowest: []}
+    for line in sys.stdin.xreadlines():
+        k, v = line.rstrip().split("\t", 1)
+        keys[zoomDepthNarrowest].append(v)
 
     try:
         AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
