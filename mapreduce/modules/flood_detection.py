@@ -93,14 +93,13 @@ def newBand(geoPicture):
 
     #move some data to R
     #trainingSet
-    robjects.r('trainingSet <- read.table("trainingSet.txt")')
-    #select columns of training set to use
-    dataColumns = numpy.append( numpy.array(presentBandsNum - 1, dtype=numpy.int), 10)
-    dataColumns = 'c' + str( tuple( dataColumns ) )
-    robjects.r('trainingSet <- trainingSet[ ,' + dataColumns + ']')
+    trainingSet = numpy.loadtxt('trainingSet.txt')
+    trainingSet = trainingSet[:,numpy.append(presentBandsNum-2,9)]
+    robjects.r.assign('trainingSet',trainingSet)
+    robjects.r('trainingSet <- as.data.frame(trainingSet)')
     #construct svm from training data
     # robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 10000, gamma = 0.001)')
-    robjects.r('class.model <- svm(V10 ~ ., data = trainingSet, type = "C", cost = 1000, kernel = "linear")')
+    robjects.r('class.model <- svm(V' + str(trainingSet.shape[1]) + ' ~ ., data = trainingSet, type = "C", cost = 1000, kernel = "linear")')
 
     #classify this image 1=cloud, 2=land(desert), 3=water, 4=land(vegetation)
     classVector = classify(imageArray[:,2:], presentBandsNum)
@@ -221,7 +220,7 @@ def geometricCorrection(imgArray, metaData):
 
 def aliSolarIrradiance(imgArray, availableBandsNum):
     Esun_ali = numpy.array([ [2,1851.8], [3, 1967.6], [4, 1837.2], [5,1551.47], [6, 1164.53], [7,957.46], [8, 451.37], [9, 230.03], [10, 79.61] ])
-    Esun_ali = numpy.reshape(Esun_ali[availableBandsNum-2,1],(1,1,Esun_ali.shape[0] ))
+    Esun_ali = numpy.reshape(Esun_ali[availableBandsNum-2,1],(1,1,availableBandsNum.size))
     imgArray = imgArray / Esun_ali
     return imgArray
 
