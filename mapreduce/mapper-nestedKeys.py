@@ -9,6 +9,8 @@ if __name__ == "__main__":
     heartbeat = Heartbeat(stdout=False, stderr=True, reporter=True)
     heartbeat.write("%s Enter mapper-nestedKeys.py...\n" % time.strftime("%H:%M:%S"))
 
+    zoomDepthNarrowest = int(sys.argv[1])
+    zoomDepthWidest = int(sys.argv[2])
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("zoomDepthWidest must be a smaller number (lower zoom level) than zoomDepthNarrowest")
 

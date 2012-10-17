@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 try:
     import ConfigParser as configparser
 except ImportError:
@@ -25,7 +26,7 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    zoomDepthNarrowest = int(config.get("DEFAULT", "mapper.zoomDepthNarrowest"))
+    zoomDepthNarrowest = int(sys.argv[1])
 
     try:
         keys = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))

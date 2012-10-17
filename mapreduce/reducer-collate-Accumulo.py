@@ -146,6 +146,8 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
+    zoomDepthNarrowest = int(sys.argv[1])
+    zoomDepthWidest = int(sys.argv[2])
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 

@@ -362,7 +362,7 @@ if __name__ == "__main__":
     useSequenceFiles = (config.get("DEFAULT", "mapper.useSequenceFiles").lower() == "true")
     if useSequenceFiles:
         heartbeat.write("%s About to load a SequenceFile...\n" % time.strftime("%H:%M:%S"))
-        incomingBandRestriction = json.loads(config.get("DEFAULT", "mapper.incomingBandRestriction"))
+        incomingBandRestriction = json.loads(open(sys.argv[1]).read())
         if incomingBandRestriction is not None:
             incomingBandRestriction = set(incomingBandRestriction)
         geoPicture = inputSequenceFile(sys.stdin, incomingBandRestriction)
