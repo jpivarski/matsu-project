@@ -52,6 +52,11 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
             except jpype.JavaException as exception:
                 raise RuntimeError(exception.stacktrace())
 
+            try:
+                metadata = AccumuloInterface.readMetadata(key)
+            except jpype.JavaException as exception:
+                raise RuntimeError(exception.stacktrace())
+
             if heartbeat is not None:
                 heartbeat.write("%s     converting %s...\n" % (time.strftime("%H:%M:%S"), key))
 
@@ -108,7 +113,7 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
             heartbeat.write("%s     writing to Accumulo key %s...\n" % (time.strftime("%H:%M:%S"), parentKey))
 
         try:
-            AccumuloInterface.write(parentKey, "{}", buff.getvalue())
+            AccumuloInterface.write(parentKey, metadata, buff.getvalue())
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
 
