@@ -141,7 +141,7 @@ class AugustusInterface(augustus.engine.interface.AugustusInterface):
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    config.read(["../../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../../jobconfig.ini", "jobconfig.ini"])
 
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
 

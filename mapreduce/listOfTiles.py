@@ -9,7 +9,7 @@ import jpype
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../jobconfig.ini", "jobconfig.ini"])
 
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
     ACCUMULO_INTERFACE = config.get("DEFAULT", "accumulo.interface")
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
+    zoomDepthNarrowest = int(config.get("DEFAULT", "mapper.zoomDepthNarrowest"))
 
     try:
         keys = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))

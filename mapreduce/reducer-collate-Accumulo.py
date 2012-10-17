@@ -129,7 +129,7 @@ if __name__ == "__main__":
     heartbeat.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../config.ini", "config.ini"])
 
     heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
@@ -146,8 +146,6 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
-    zoomDepthWidest = int(config.get("DEFAULT", "mapreduce.zoomDepthWidest"))
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 

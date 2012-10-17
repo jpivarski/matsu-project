@@ -351,7 +351,7 @@ if __name__ == "__main__":
     osr.UseExceptions()
 
     config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../config.ini", "config.ini"])
 
     modules = json.loads(config.get("DEFAULT", "mapper.modules"))
     if modules == []: modules = None
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     heartbeat.write("%s About to remove unnecessary bands...\n" % time.strftime("%H:%M:%S"))
     geoPicture = removeBands(geoPicture, outgoingBandRestriction)
 
-    depth = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
+    depth = int(config.get("DEFAULT", "mapper.zoomDepthNarrowest"))
     longpixels = int(config.get("DEFAULT", "mapper.tileLongitudePixels"))
     latpixels = int(config.get("DEFAULT", "mapper.tileLatitudePixels"))
     numLatitudeSections = int(config.get("DEFAULT", "mapper.numberOfLatitudeSections"))
@@ -396,11 +396,11 @@ if __name__ == "__main__":
     heartbeat.write("%s About to make tiles...\n" % time.strftime("%H:%M:%S"))
     geoPictureTiles = makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, heartbeat=heartbeat)
 
-    configuration = json.loads(config.get("DEFAULT", "reducer.configuration"))
-    outputToAccumulo = (config.get("DEFAULT", "reducer.outputToAccumulo").lower() == "true")
-    outputToLocalDirectory = (config.get("DEFAULT", "reducer.outputToLocalDirectory").lower() == "true")
-    outputDirectoryName = config.get("DEFAULT", "reducer.outputDirectoryName")
-    outputToStdOut = (config.get("DEFAULT", "reducer.outputToStdOut").lower() == "true")
+    configuration = json.loads(config.get("DEFAULT", "mapper.configuration"))
+    outputToAccumulo = (config.get("DEFAULT", "mapper.outputToAccumulo").lower() == "true")
+    outputToLocalDirectory = (config.get("DEFAULT", "mapper.outputToLocalDirectory").lower() == "true")
+    outputDirectoryName = config.get("DEFAULT", "mapper.outputDirectoryName")
+    outputToStdOut = (config.get("DEFAULT", "mapper.outputToStdOut").lower() == "true")
 
     if outputToAccumulo:
         heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
