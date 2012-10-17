@@ -1,5 +1,6 @@
 <project default="war" basedir=".">
     <property file="../../buildconfig.ini" />
+    <property file="../../jobconfig.ini" />
 
     <path id="classpath.base">
         <pathelement location="${jars.servlet_api}" />

@@ -134,7 +134,7 @@ if __name__ == "__main__":
     heartbeat.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     config = configparser.ConfigParser()
-    config.read(["../config.ini", "config.ini"])
+    config.read(["../jobconfig.ini", "jobconfig.ini"])
 
     heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")

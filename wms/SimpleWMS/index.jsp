@@ -33,9 +33,9 @@ var map;
 var circle;
 
 var overlays = {};
-var lat = <%= giveMeSomething("lat", "40.183", request) %>;
-var lng = <%= giveMeSomething("lng", "94.312", request) %>;
-var z = <%= giveMeSomething("z", "9", request) %>;
+var lat = <%= giveMeSomething("lat", "0.0", request) %>;
+var lng = <%= giveMeSomething("lng", "0.0", request) %>;
+var z = <%= giveMeSomething("z", "2", request) %>;
 var layers = ["RGB"];
 
 var points = {};
