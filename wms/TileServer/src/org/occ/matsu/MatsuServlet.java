@@ -91,6 +91,9 @@ public class MatsuServlet extends HttpServlet {
 	else if (command.equals("imageList")) {
 	    getImageList(request, response);
 	}
+	else if (command.equals("imageMetadata")) {
+	    getImageMetadata(request, response);
+	}
 	else if (command.equals("points")) {
 	    getPoints(request, response);
 	}
@@ -171,6 +174,32 @@ public class MatsuServlet extends HttpServlet {
     		servletOutputStream.write(l2png);
     		servletOutputStream.close();
 
+    		break;
+    	    }
+    	}
+    }
+
+    protected void getImageMetadata(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    	if (zooKeeperInstance == null  ||  connector == null) { return; }
+
+    	Scanner scanner;
+    	try {
+    	    scanner = connector.createScanner(imageTableName, Constants.NO_AUTHS);
+    	}
+    	catch (TableNotFoundException exception) {
+    	    return;
+    	}
+
+    	String key = request.getParameter("key");
+    	if (key == null) { return; }
+
+    	scanner.setRange(new Range(key));
+
+    	for (Entry<Key, Value> entry : scanner) {
+    	    String columnName = entry.getKey().getColumnQualifier().toString();
+    	    if (columnName.equals("metadata")) {
+                PrintWriter output = response.getWriter();
+                output.print(entry.getValue().toString());
     		break;
     	    }
     	}

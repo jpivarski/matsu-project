@@ -33,10 +33,17 @@ var map;
 var circle;
 
 var overlays = {};
-var lat = <%= giveMeSomething("lat", "40.183", request) %>;
-var lng = <%= giveMeSomething("lng", "94.312", request) %>;
-var z = <%= giveMeSomething("z", "9", request) %>;
-var layers = ["RGB"];
+var lat = <%= giveMeSomething("lat", "0.0", request) %>;
+var lng = <%= giveMeSomething("lng", "0.0", request) %>;
+var z = <%= giveMeSomething("z", "2", request) %>;
+
+var rgb = <%= giveMeSomething("rgb", "true", request) %>;
+var co2 = <%= giveMeSomething("co2", "false", request) %>;
+var flood = <%= giveMeSomething("flood", "false", request) %>;
+var layers = [];
+if (rgb) { layers.push("RGB"); }
+if (co2) { layers.push("CO2"); }
+if (flood) { layers.push("flood"); }
 
 var points = {};
 var dontReloadPoints = {};
@@ -60,10 +67,35 @@ var maxUserTime;
 
 var minScore = 0.0;
 var maxScore = 10.0;
-var minUserScore = 5.0;
+var minUserScore = 0.0;
 var maxUserScore = 10.0;
 var scoreField = "analyticscore";
-var pointsTableName = "MatsuLevel2LngLat";
+
+var pointsArg = "<%= giveMeSomething("points", "none", request) %>";
+var pointsTableName = "None";
+if (pointsArg == "entities") {
+    minScore = 0.0;
+    maxScore = 10.0;
+    minUserScore = 0.0;
+    maxUserScore = 10.0;
+    scoreField = "analyticscore";
+    pointsTableName = "MatsuLevel2LngLat";
+} else if (pointsArg == "clusters") {
+    minScore = 0.0;
+    maxScore = 30.0;
+    minUserScore = 0.0;
+    maxUserScore = 30.0;
+    scoreField = "analyticsscore";
+    pointsTableName = "MatsuLevel2Clusters";
+}
+else {
+    minScore = 0.0;
+    maxScore = 10.0;
+    minUserScore = 5.0;
+    maxUserScore = 10.0;
+    scoreField = "analyticscore";
+    pointsTableName = "None";
+}
 
 Number.prototype.pad = function(size) {
     if (typeof(size) !== "number") { size = 2; }
@@ -95,7 +127,6 @@ function isNumber(num) {
 };
 
 function tileIndex(depth, longitude, latitude) {
-    if (Math.abs(latitude) > 90.0) { alert("one"); }
     longitude += 180.0;
     latitude += 90.0;
     while (longitude <= 0.0) { longitude += 360.0; }
@@ -136,6 +167,16 @@ function initialize() {
 	}
     }
     document.getElementById("show-points").checked = showPoints;
+
+    if (pointsTableName == "None") {
+        document.getElementById("points-pulldown").value = "None";
+    }
+    else if (pointsTableName == "MatsuLevel2LngLat") {
+        document.getElementById("points-pulldown").value = "MatsuLevel2LngLat";
+    }
+    else if (pointsTableName == "MatsuLevel2Clusters") {
+        document.getElementById("points-pulldown").value = "MatsuLevel2Clusters";
+    }
 
     getTable();
 
@@ -214,6 +255,12 @@ function initialize() {
 }
 
 function getTable() {
+    if (pointsTableName == "None") {
+        alldata = [];
+        drawTable();
+        return;
+    }
+
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.onreadystatechange = function() {
 	if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
@@ -228,6 +275,13 @@ function getTable() {
 }
 
 function drawTable(sortfield, numeric, increasing) {
+    if (pointsTableName == "None") {
+        document.getElementById("points-stuff").style.visibility = "hidden";
+        document.getElementById("table-here").innerHTML = "";
+        return;
+    }
+
+    document.getElementById("points-stuff").style.visibility = "visible";
     if (sortfield != null) {
 	var inmetadata = (sortfield != "latitude"  &&  sortfield != "longitude"  &&  sortfield != "time");
 	alldata.sort(function(a, b) {
@@ -421,6 +475,8 @@ function getOverlays() {
 }
 
 function getLngLatPoints() {
+    if (pointsTableName == "None") { return; }
+
     var bounds = map.getBounds();
     if (!bounds) { return; }
 
@@ -468,11 +524,13 @@ function getLngLatPoints() {
     dontReloadPoints[key] = true;
 
     var url;
-    if (size != -1) {
-	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&pointsTableName=" + pointsTableName;
-    }
-    else {
-	url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover + "&pointsTableName=" + pointsTableName;
+    if (pointsTableName != "None") {
+        if (size != -1) {
+	    url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&pointsTableName=" + pointsTableName;
+        }
+        else {
+	    url = "../TileServer/getTile?command=points&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&groupdepth=" + crossover + "&pointsTableName=" + pointsTableName;
+        }
     }
 
     var xmlhttp = new XMLHttpRequest();
@@ -533,11 +591,18 @@ function switchTables(index) {
         minUserScore = 5.0;
         maxUserScore = 10.0;
         scoreField = "analyticscore";
+        pointsTableName = "None";
+    } else if (index == 1) {
+        minScore = 0.0;
+        maxScore = 10.0;
+        minUserScore = 0.0;
+        maxUserScore = 10.0;
+        scoreField = "analyticscore";
         pointsTableName = "MatsuLevel2LngLat";
-    } else {
+    } else if (index == 2) {
         minScore = 0.0;
         maxScore = 30.0;
-        minUserScore = 15.0;
+        minUserScore = 0.0;
         maxUserScore = 30.0;
         scoreField = "analyticsscore";
         pointsTableName = "MatsuLevel2Clusters";
@@ -584,17 +649,20 @@ function switchTables(index) {
 <h3 style="margin-bottom: 0px;">Latitude-longitude Points</h3>
 <form onsubmit="return false;">
 <p class="layer_checkbox" style="margin-bottom: 10px;">Source
-<select onchange="switchTables(this.selectedIndex);">
-<option value="MatsuLevel2LngLat" selected="true">limit-of-resolution entities</option>
+<select id="points-pulldown" onchange="switchTables(this.selectedIndex);">
+<option value="None" selected="true">none</option>
+<option value="MatsuLevel2LngLat">limit-of-resolution entities</option>
 <option value="MatsuLevel2Clusters">CO2 clusters</option>
 </select>
 
+<div id="points-stuff" style="margins: 0px; padding: 0px; visibility: visible;">
 <p class="layer_checkbox" onclick="togglePoints('show-points');"><label for="show-points"><input id="show-points" type="checkbox" checked="true"> Show points</label>
 
 <p style="margin-left: 20px; margin-bottom: 0px;">Filter by "analyticsscore"
 <div style="margin-left: 25px; width: 163px; margin-top: 0px;"><div id="slider-points"></div></div>
 
 <p id="table-here" class="layer_checkbox" style="margin-top: 10px;"></p>
+</div>
 
 </form>
 

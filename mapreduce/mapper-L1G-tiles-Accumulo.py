@@ -167,7 +167,7 @@ def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeS
             downLong, downLat, altitude       = coordinateTransform.TransformPoint(tlx + 0.5*weres*rasterXSize, tly + thetop*nsres*rasterYSize)
 
             if heartbeat is not None:
-                heartbeat.write("%s About to make tile %s, centered on lat=%.3f&lng=%.3f&z=10...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
+                heartbeat.write("%s About to make tile %s, centered on lat=%.3f&lng=%.3f&z=12...\n" % (time.strftime("%H:%M:%S"), tileName(*ti), originLat, originLong))
 
             # do some linear algebra to convert coordinates
             L2PNG_to_geo_trans = numpy.matrix([[(latmin - latmax)/float(latpixels), 0.], [0., (longmax - longmin)/float(longpixels)]])
@@ -351,7 +351,7 @@ if __name__ == "__main__":
     osr.UseExceptions()
 
     config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../jobconfig.ini", "jobconfig.ini"])
 
     modules = json.loads(config.get("DEFAULT", "mapper.modules"))
     if modules == []: modules = None
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     useSequenceFiles = (config.get("DEFAULT", "mapper.useSequenceFiles").lower() == "true")
     if useSequenceFiles:
         heartbeat.write("%s About to load a SequenceFile...\n" % time.strftime("%H:%M:%S"))
-        incomingBandRestriction = json.loads(config.get("DEFAULT", "mapper.incomingBandRestriction"))
+        incomingBandRestriction = json.loads(open(sys.argv[1]).read())
         if incomingBandRestriction is not None:
             incomingBandRestriction = set(incomingBandRestriction)
         geoPicture = inputSequenceFile(sys.stdin, incomingBandRestriction)
@@ -372,7 +372,7 @@ if __name__ == "__main__":
 
     geoPicture.metadata["timestamp"] = time.mktime(datetime.datetime.strptime(json.loads(geoPicture.metadata["L1T"])["PRODUCT_METADATA"]["START_TIME"], "%Y %j %H:%M:%S").timetuple())
     geoPicture.metadata["analytic"] = "tile-producer"
-    geoPicture.metadata["version"] = [1, 1, 0]
+    geoPicture.metadata["version"] = [0, 8, 0]
 
     inputBands = geoPicture.bands[:]   # no virtual bands
 
@@ -387,20 +387,25 @@ if __name__ == "__main__":
     heartbeat.write("%s About to remove unnecessary bands...\n" % time.strftime("%H:%M:%S"))
     geoPicture = removeBands(geoPicture, outgoingBandRestriction)
 
-    depth = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
+    depth = int(config.get("DEFAULT", "mapper.zoomDepthNarrowest"))
     longpixels = int(config.get("DEFAULT", "mapper.tileLongitudePixels"))
     latpixels = int(config.get("DEFAULT", "mapper.tileLatitudePixels"))
     numLatitudeSections = int(config.get("DEFAULT", "mapper.numberOfLatitudeSections"))
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
 
+    overlap = set(inputBands).intersection(geoPicture.bands)
+    heartbeat.write("%s Bands to process: %s" % repr(overlap))
+    if len(overlap) == 0:
+        raise RuntimeError("There are no bands to process!  Check incomingBandRestriction and outgoingBandRestriction to be sure they're compatible.")
+
     heartbeat.write("%s About to make tiles...\n" % time.strftime("%H:%M:%S"))
     geoPictureTiles = makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeSections, splineOrder, heartbeat=heartbeat)
 
-    configuration = json.loads(config.get("DEFAULT", "reducer.configuration"))
-    outputToAccumulo = (config.get("DEFAULT", "reducer.outputToAccumulo").lower() == "true")
-    outputToLocalDirectory = (config.get("DEFAULT", "reducer.outputToLocalDirectory").lower() == "true")
-    outputDirectoryName = config.get("DEFAULT", "reducer.outputDirectoryName")
-    outputToStdOut = (config.get("DEFAULT", "reducer.outputToStdOut").lower() == "true")
+    configuration = json.loads(config.get("DEFAULT", "mapper.configuration"))
+    outputToAccumulo = (config.get("DEFAULT", "mapper.outputToAccumulo").lower() == "true")
+    outputToLocalDirectory = (config.get("DEFAULT", "mapper.outputToLocalDirectory").lower() == "true")
+    outputDirectoryName = config.get("DEFAULT", "mapper.outputDirectoryName")
+    outputToStdOut = (config.get("DEFAULT", "mapper.outputToStdOut").lower() == "true")
 
     if outputToAccumulo:
         heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))

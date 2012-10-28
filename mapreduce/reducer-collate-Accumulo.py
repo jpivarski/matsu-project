@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import time
 import struct
 from io import BytesIO
@@ -51,11 +52,15 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
             except jpype.JavaException as exception:
                 raise RuntimeError(exception.stacktrace())
 
+            try:
+                metadata = AccumuloInterface.readMetadata(key)
+            except jpype.JavaException as exception:
+                raise RuntimeError(exception.stacktrace())
+
             if heartbeat is not None:
                 heartbeat.write("%s     converting %s...\n" % (time.strftime("%H:%M:%S"), key))
 
-            buff = BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes))
-            childImages.append(numpy.asarray(Image.open(buff)))
+            childImages.append(numpy.asarray(Image.open(BytesIO(struct.pack("%db" % len(l2pngBytes), *l2pngBytes)))))
 
         if heartbeat is not None:
             heartbeat.write("%s     shrinking and overlaying %d images...\n" % (time.strftime("%H:%M:%S"), len(childKeys)))
@@ -108,7 +113,7 @@ def collate(keylist, AccumuloInterface, splineOrder, heartbeat=None):
             heartbeat.write("%s     writing to Accumulo key %s...\n" % (time.strftime("%H:%M:%S"), parentKey))
 
         try:
-            AccumuloInterface.write(parentKey, "{}", buff.getvalue())
+            AccumuloInterface.write(parentKey, metadata, buff.getvalue())
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
 
@@ -129,7 +134,7 @@ if __name__ == "__main__":
     heartbeat.write("%s Enter reducer-collate-Accumulo.py...\n" % time.strftime("%H:%M:%S"))
 
     config = configparser.ConfigParser()
-    config.read(["../CONFIG.ini", "CONFIG.ini"])
+    config.read(["../jobconfig.ini", "jobconfig.ini"])
 
     heartbeat.write("%s Starting the Java Virtual Machine...\n" % time.strftime("%H:%M:%S"))
     JAVA_VIRTUAL_MACHINE = config.get("DEFAULT", "lib.jvm")
@@ -146,17 +151,22 @@ if __name__ == "__main__":
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
 
-    zoomDepthNarrowest = int(config.get("DEFAULT", "mapreduce.zoomDepthNarrowest"))
-    zoomDepthWidest = int(config.get("DEFAULT", "mapreduce.zoomDepthWidest"))
+    zoomDepthNarrowest = int(sys.argv[1])
+    zoomDepthWidest = int(sys.argv[2])
     if zoomDepthWidest >= zoomDepthNarrowest:
         raise Exception("mapreduce.zoomDepthWidest must be a smaller number (lower zoom level) than mapreduce.zoomDepthNarrowest")
 
-    heartbeat.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
-    keys = {}
-    try:
-        keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
-    except jpype.JavaException as exception:
-        raise RuntimeError(exception.stacktrace())
+    # heartbeat.write("%s Extracting all T%02d-xxxxx-yyyyy keys from the database...\n" % (time.strftime("%H:%M:%S"), zoomDepthNarrowest))
+    # keys = {}
+    # try:
+    #     keys[zoomDepthNarrowest] = AccumuloInterface.getKeys("T%02d-" % zoomDepthNarrowest, "T%02d-" % (zoomDepthNarrowest + 1))
+    # except jpype.JavaException as exception:
+    #     raise RuntimeError(exception.stacktrace())
+
+    keys = {zoomDepthNarrowest: []}
+    for line in sys.stdin.xreadlines():
+        k, v = line.rstrip().split("\t", 1)
+        keys[zoomDepthNarrowest].append(v)
 
     try:
         AccumuloInterface.connectForWriting(ACCUMULO_DB_NAME, ZOOKEEPER_LIST, ACCUMULO_USER_NAME, ACCUMULO_PASSWORD, ACCUMULO_TABLE_NAME)
