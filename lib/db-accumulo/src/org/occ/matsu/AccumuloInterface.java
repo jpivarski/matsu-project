@@ -199,6 +199,13 @@ public class AccumuloInterface {
 	batchWriter.addMutation(mutation);
     }
 
+    public static void polygon_write(String key, String metadata, String polygon) throws MutationsRejectedException {
+	Mutation mutation = new Mutation(new Text(key));
+	mutation.put(columnFamily, new Text("metadata"), new Value(metadata.getBytes()));
+	mutation.put(columnFamily, new Text("polygon"), new Value(polygon.getBytes()));
+	batchWriter.addMutation(mutation);
+    }
+
     public static void delete(String start, String end) throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
 	// Accumulo 1.4.1
 	// connector.tableOperations().deleteRows(tableName, new Text(start), new Text(end));
