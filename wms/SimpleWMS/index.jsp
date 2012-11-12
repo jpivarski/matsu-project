@@ -55,7 +55,7 @@ var alldata;
 
 var polygons = {};
 var dontReloadPolygons = {};
-var showPolygons = true;
+var showPolygons = false;
 var olddepth;
 
 var stats;
@@ -228,6 +228,13 @@ function initialize() {
 		}
 		points = {};
 		dontReloadPoints = {};
+
+                for (var key in polygons) {
+                    polygons[key].setMap(null);
+                    delete polygons[key];
+                }
+                polygons = {};
+                dontReloadPolygons = {};
 
 		getEverything();
 	    }
@@ -567,32 +574,35 @@ function getLngLatPoints() {
 	    	    var identifier = data[i]["identifier"];
                     if (data[i]["metadata"][scoreField] > minUserScore  &&  data[i]["metadata"][scoreField] < maxUserScore) {
 		        if (!(identifier in points)) {
-			    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
+                            var t = parseFloat(data[i]["time"]);
+                            if (t >= minUserTime  &&  t <= maxUserTime) {
+			        points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
 
-			    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
-			        var obj = document.getElementById("table-" + ident);
-			        obj.style.background = "#ffff00";
-			        sidebar.scrollTop = obj.offsetTop;
+			        google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
+			            var obj = document.getElementById("table-" + ident);
+			            obj.style.background = "#ffff00";
+			            sidebar.scrollTop = obj.offsetTop;
 
-			        var countdown = 10;
-			        var state = true;
-			        var callme = function() {
-				    if (state) {
-				        obj.style.background = null;
-				        state = false;
-				    }
-				    else {
-				        obj.style.background = "#ffff00";
-				        state = true;
-				    }
+			            var countdown = 10;
+			            var state = true;
+			            var callme = function() {
+				        if (state) {
+				            obj.style.background = null;
+				            state = false;
+				        }
+				        else {
+				            obj.style.background = "#ffff00";
+				            state = true;
+				        }
 
-				    countdown--;
-				    if (countdown >= 0) { setTimeout(callme, 200); }
-			        };
-			        setTimeout(callme, 200);
+				        countdown--;
+				        if (countdown >= 0) { setTimeout(callme, 200); }
+			            };
+			            setTimeout(callme, 200);
 
-			    } }(identifier));
-		        }
+			        } }(identifier));
+		            }
+                        }
 		    }
                 }
 	    }
@@ -763,7 +773,7 @@ function switchTables(index) {
 
 <h3 style="margin-bottom: 0px;">Geospatial Polygons</h3>
 <form onsubmit="return false;">
-<p class="layer_checkbox"><label for="show-polygons"><input id="show-polygons" type="checkbox" checked="true" onclick="togglePolygons('show-polygons');"> Show polygons</label>
+<p class="layer_checkbox"><label for="show-polygons"><input id="show-polygons" type="checkbox" checked="false" onclick="togglePolygons('show-polygons');"> Show polygons</label>
 </form>
 
 <div id="polygon-data" style="margin-left: 20px;"><i>(none selected)</i></div>
