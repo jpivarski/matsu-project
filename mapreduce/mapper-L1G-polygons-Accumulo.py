@@ -19,7 +19,7 @@ from utilities import *
 def inputOneLine(inputStream):
     line = inputStream.readline()
     if not line: raise IOError("No input")
-    return GeoPictureSerializer.deserialize(line).metadata
+    return GeoPictureSerializer.deserialize(line)
 
 def inputSequenceFile(inputStream):
     # enforce a structure on SequenceFile entries to be sure that Hadoop isn't splitting it up among multiple mappers
@@ -38,7 +38,9 @@ def inputSequenceFile(inputStream):
     while chunk:
         chunk = sys.stdin.read(4096)
 
-    return metadata
+    geoPicture = GeoPictureSerializer.GeoPicture()
+    geoPicture.metadata = metadata
+    return geoPicture
 
 ################################################################################## make polygon and pass through metadata
 
@@ -97,14 +99,14 @@ def makePolygon(geoPicture, depth):
     geoPicture.metadata["longIndex"] = longIndex
     geoPicture.metadata["latIndex"] = latIndex
     geoPicture.metadata["tileName"] = tileName(depth, longIndex, latIndex)
-    geoPicture.metadata["geoCenter"] = "geoCenter": "lat=%.3f&lng=%.3f&z=10" % (center.lat, center.lon)
-    geoPictureTile.metadata["identifier"] = hash(polygon)
+    geoPicture.metadata["geoCenter"] = "lat=%.3f&lng=%.3f&z=10" % (center.lat, center.lon)
+    geoPicture.metadata["identifier"] = hash(tuple(polygon)) % (2**64)   # unique unsigned 64-bit value
     geoPicture.metadata["timestamp"] = time.mktime(datetime.datetime.strptime(product_metadata["START_TIME"], "%Y %j %H:%M:%S").timetuple())
 
     geoPicture.metadata["analytic"] = "polygon-producer"
     geoPicture.metadata["version"] = [0, 8, 0]
 
-    key = "%s-%010d-%s" % (geoPictureTile.metadata["tileName"], geoPictureTile.metadata["timestamp"], geoPictureTile.metadata["identifier"])
+    key = "%s-%010d-%s" % (geoPicture.metadata["tileName"], geoPicture.metadata["timestamp"], geoPicture.metadata["identifier"])
 
     return key, polygon, geoPicture.metadata
 
@@ -140,3 +142,5 @@ if __name__ == "__main__":
         AccumuloInterface.polygon_write(key, json.dumps(metadata), json.dumps(polygon))
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
+
+    print key, polygon, metadata
