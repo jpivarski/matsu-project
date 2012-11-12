@@ -53,11 +53,17 @@ var showPoints = true;
 
 var alldata;
 
+var polygons = {};
+var dontReloadPolygons = {};
+var showPolygons = true;
+var olddepth;
+
 var stats;
 var stats_depth = -1;
 var stats_numVisible = 0;
 var stats_numInMemory = 0;
 var stats_numPoints = 0;
+var stats_numPolygons = 0;
 
 var map_canvas;
 var sidebar;
@@ -179,6 +185,8 @@ function initialize() {
     }
 
     getTable();
+
+    document.getElementById("show-polygons").checked = showPolygons;
 
     var latLng = new google.maps.LatLng(lat, lng);
     var options = {zoom: z, center: latLng, mapTypeId: google.maps.MapTypeId.TERRAIN};
@@ -377,6 +385,7 @@ function drawTable(sortfield, numeric, increasing) {
 
 function getEverything() {
     getOverlays();
+    if (showPolygons) { getPolygons(); }
     if (showPoints) { getLngLatPoints(); }
     else { updateStatus(); }
 }
@@ -407,9 +416,7 @@ function toggleState(name, objname) {
 
 function togglePoints(objname) {
     var obj = document.getElementById(objname);
-    showPoints = !(obj.checked);
-    obj.checked = showPoints;
-
+    showPoints = obj.checked;
     if (showPoints) {
 	getLngLatPoints();
     }
@@ -423,6 +430,24 @@ function togglePoints(objname) {
 	oldsize = -2;
 	stats_numPoints = 0;
 	updateStatus();
+    }
+}
+
+function togglePolygons(objname) {
+    var obj = document.getElementById(objname);
+    showPolygons = obj.checked;
+    if (showPolygons) {
+        getPolygons();
+    }
+    else {
+        for (var key in polygons) {
+            polygons[key].setMap(null);
+            delete polygons[key];
+        }
+        polygons = {};
+        dontReloadPolygons = {};
+        stats_numPolygons = 0;
+        updateStatus();
     }
 }
 
@@ -580,8 +605,78 @@ function getLngLatPoints() {
     xmlhttp.send();
 }
 
+function getPolygons() {
+    var bounds = map.getBounds();
+    if (!bounds) { return; }
+
+    var depth = map.getZoom() - 2;
+    if (depth != olddepth) {
+        for (var key in polygons) {
+            polygons[key].setMap(null);
+            delete polygons[key];
+        }
+        polygons = {};
+        dontReloadPolygons = {};
+    }
+    olddepth = depth;
+
+    var longmin = bounds.getSouthWest().lng();
+    var longmax = bounds.getNorthEast().lng();
+    var latmin = bounds.getSouthWest().lat();
+    var latmax = bounds.getNorthEast().lat();
+
+    [depth, longmin, latmin] = tileIndex(10, longmin, latmin);
+    [depth, longmax, latmax] = tileIndex(10, longmax, latmax);
+
+    var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
+    for (var oldkey in dontReloadPolygons) {
+	if (key == oldkey) {
+	    return;
+	}
+    }
+    dontReloadPolygons[key] = true;
+
+    var url = "../TileServer/getTile?command=polygons&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&polygonsTableName=MatsuLevel2Polygons";
+    
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.onreadystatechange = function() {
+        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+            if (xmlhttp.responseText != "") {
+                var data = JSON.parse(xmlhttp.responseText)["data"];
+                for (var i in data) {
+                    var identifier = parseInt(data[i]["identifier"]);
+                    if (!(identifier in polygons)) {
+                        var t = parseFloat(data[i]["time"]);
+                        if (t >= minUserTime  &&  t <= maxUserTime) {
+                            var rawcoordinates = data[i]["polygon"];
+                            var coordinates = [];
+                            for (var j in rawcoordinates) {
+                                coordinates.push(new google.maps.LatLng(rawcoordinates[j][1], rawcoordinates[j][0]));
+                            }
+
+                            polygons[identifier] = new google.maps.Polygon({"paths": coordinates, "strokeColor": "#8d0ecc", "strokeWeight": 2.0, "fillOpacity": 0.0, "clickable": true});
+                            polygons[identifier].setMap(map);
+
+                            google.maps.event.addListener(polygons[identifier], "click", function(metadata) {
+                                return function() {
+                                    alert(metadata);
+                                };
+                            }(data[i]["metadata"]));
+                        }
+                    }
+                }
+            }
+
+            stats_numPolygons = Object.size(polygons);
+            updateStatus();
+        }
+    }
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send();
+}
+
 function updateStatus() {
-    stats.innerHTML = "<span class='spacer'>Zoom depth: " + stats_depth + "</span><span class='spacer'>Tiles visible: " + stats_numVisible + "</span><span class='spacer'>Tiles in your browser's memory: " + stats_numInMemory + " (counting empty tiles)</span><span class='spacer'>Points: " + stats_numPoints + "</span>";
+    stats.innerHTML = "<span class='spacer'>Zoom depth: " + stats_depth + "</span><span class='spacer'>Tiles visible: " + stats_numVisible + "</span><span class='spacer'>Tiles in your browser's memory: " + stats_numInMemory + " (counting empty tiles)</span><span class='spacer'>Points: " + stats_numPoints + "</span><span class='spacer'>Polygons: " + stats_numPolygons + "</span>";
 }
 
 function switchTables(index) {
@@ -639,7 +734,7 @@ function switchTables(index) {
 <div style="position: absolute; top: 20px; left: 25px; width: 163px;"><div id="slider-time"></div></div>
 </div>
 
-<h3 style="margin-top: 20px;">Layers</h3>
+<h3 style="margin-top: 20px;">Visible Layers</h3>
 <form onsubmit="return false;">
 <p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
 <p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
@@ -656,7 +751,7 @@ function switchTables(index) {
 </select>
 
 <div id="points-stuff" style="margins: 0px; padding: 0px; visibility: visible;">
-<p class="layer_checkbox" onclick="togglePoints('show-points');"><label for="show-points"><input id="show-points" type="checkbox" checked="true"> Show points</label>
+<p class="layer_checkbox"><label for="show-points"><input id="show-points" type="checkbox" checked="true" onclick="togglePoints('show-points');"> Show points</label>
 
 <p style="margin-left: 20px; margin-bottom: 0px;">Filter by "analyticsscore"
 <div style="margin-left: 25px; width: 163px; margin-top: 0px;"><div id="slider-points"></div></div>
@@ -665,6 +760,13 @@ function switchTables(index) {
 </div>
 
 </form>
+
+<h3 style="margin-bottom: 0px;">Geospatial Polygons</h3>
+<form onsubmit="return false;">
+<p class="layer_checkbox"><label for="show-polygons"><input id="show-polygons" type="checkbox" checked="true" onclick="togglePolygons('show-polygons');"> Show polygons</label>
+</form>
+
+<div id="polygon-data" style="margin-left: 20px;"><i>(none selected)</i></div>
 
 </div>
 
