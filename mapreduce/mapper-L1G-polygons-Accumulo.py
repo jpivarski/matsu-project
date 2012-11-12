@@ -130,7 +130,7 @@ if __name__ == "__main__":
     ZOOKEEPER_LIST = config.get("DEFAULT", "accumulo.zookeeper_list")
     ACCUMULO_USER_NAME = config.get("DEFAULT", "accumulo.user_name")
     ACCUMULO_PASSWORD = config.get("DEFAULT", "accumulo.password")
-    ACCUMULO_TABLE_NAME = config.get("DEFAULT", "accumulo.table_name")
+    ACCUMULO_TABLE_NAME = config.get("DEFAULT", "accumulo.polygons_table_name")
     try:
         jpype.startJVM(JAVA_VIRTUAL_MACHINE, "-Djava.class.path=%s" % ACCUMULO_INTERFACE)
         AccumuloInterface = jpype.JClass("org.occ.matsu.AccumuloInterface")
