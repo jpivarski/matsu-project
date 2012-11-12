@@ -96,6 +96,9 @@ public class MatsuServlet extends HttpServlet {
 	else if (command.equals("points")) {
 	    getPoints(request, response);
 	}
+	else if (command.equals("polygons")) {
+	    getPolygons(request, response);
+	}
 	else if (command.equals("test")) {
 	    PrintWriter output = response.getWriter();
 	    output.println("I'm alive.");
@@ -557,7 +560,7 @@ public class MatsuServlet extends HttpServlet {
 
 	    Entry<Key, Value> last = null;
 	    String lastrow = "";
-	    double polygon = "[]";
+	    String polygon = "[]";
 	    String metadata = "{}";
 
 	    for (Entry<Key, Value> entry : scanner) {
