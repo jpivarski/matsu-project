@@ -142,5 +142,3 @@ if __name__ == "__main__":
         AccumuloInterface.polygon_write(key, json.dumps(metadata), json.dumps(polygon))
     except jpype.JavaException as exception:
         raise RuntimeError(exception.stacktrace())
-
-    print key, polygon, metadata
