@@ -49,13 +49,13 @@ var points = {};
 var dontReloadPoints = {};
 var oldsize;
 var crossover = 4;
-var showPoints = true;
+var showPoints = <%= giveMeSomething("showPoints", "true", request) %>;
 
 var alldata;
 
 var polygons = {};
 var dontReloadPolygons = {};
-var showPolygons = false;
+var showPolygons = <%= giveMeSomething("showPolygons", "false", request) %>;
 var olddepth;
 
 var stats;
@@ -235,6 +235,7 @@ function initialize() {
                 }
                 polygons = {};
                 dontReloadPolygons = {};
+                setPolygonMetadata(null);
 
 		getEverything();
 	    }
@@ -453,6 +454,7 @@ function togglePolygons(objname) {
         }
         polygons = {};
         dontReloadPolygons = {};
+        setPolygonMetadata(null);
         stats_numPolygons = 0;
         updateStatus();
     }
@@ -470,8 +472,12 @@ function getOverlays() {
     var latmin = bounds.getSouthWest().lat();
     var latmax = bounds.getNorthEast().lat();
 
-    [depth, longmin, latmin] = tileIndex(depth, longmin, latmin);
-    [depth, longmax, latmax] = tileIndex(depth, longmax, latmax);
+    var tmp = tileIndex(depth, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(depth, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
 
     var depthPad = depth.pad(2);
     for (var key in overlays) {
@@ -544,8 +550,12 @@ function getLngLatPoints() {
     var latmin = bounds.getSouthWest().lat();
     var latmax = bounds.getNorthEast().lat();
 
-    [depth, longmin, latmin] = tileIndex(10, longmin, latmin);
-    [depth, longmax, latmax] = tileIndex(10, longmax, latmax);
+    var tmp = tileIndex(10, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(10, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
 
     var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
     for (var oldkey in dontReloadPoints) {
@@ -627,6 +637,7 @@ function getPolygons() {
         }
         polygons = {};
         dontReloadPolygons = {};
+        setPolygonMetadata(null);
     }
     olddepth = depth;
 
@@ -635,8 +646,12 @@ function getPolygons() {
     var latmin = bounds.getSouthWest().lat();
     var latmax = bounds.getNorthEast().lat();
 
-    [depth, longmin, latmin] = tileIndex(10, longmin, latmin);
-    [depth, longmax, latmax] = tileIndex(10, longmax, latmax);
+    var tmp = tileIndex(10, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(10, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
 
     var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
     for (var oldkey in dontReloadPolygons) {
@@ -664,14 +679,18 @@ function getPolygons() {
                                 coordinates.push(new google.maps.LatLng(rawcoordinates[j][1], rawcoordinates[j][0]));
                             }
 
-                            polygons[identifier] = new google.maps.Polygon({"paths": coordinates, "strokeColor": "#8d0ecc", "strokeWeight": 2.0, "fillOpacity": 0.0, "clickable": true});
+                            polygons[identifier] = new google.maps.Polygon({"paths": coordinates, "strokeColor": "#ff0000", "strokeWeight": 2.0, "fillColor": "#ff0000", "fillOpacity": 0.0, "clickable": true});
                             polygons[identifier].setMap(map);
 
-                            google.maps.event.addListener(polygons[identifier], "click", function(metadata) {
+                            google.maps.event.addListener(polygons[identifier], "click", function(polys, ident, metadata) {
                                 return function() {
-                                    alert(metadata);
+                                    for (var otherid in polys) {
+                                        polys[otherid].setOptions({"fillOpacity": 0.0});
+                                    }
+                                    polys[ident].setOptions({"fillOpacity": 0.25});
+                                    setPolygonMetadata(metadata);
                                 };
-                            }(data[i]["metadata"]));
+                            }(polygons, identifier, data[i]["metadata"]));
                         }
                     }
                 }
@@ -683,6 +702,57 @@ function getPolygons() {
     }
     xmlhttp.open("GET", url, true);
     xmlhttp.send();
+}
+
+function selectNoPolygons() {
+    for (var key in polygons) {
+        polygons[key].setOptions({"fillOpacity": 0.0});
+    }
+    setPolygonMetadata(null);
+}
+
+function dumpMetadata(indentation, metadata) {
+    if (typeof metadata == "string") {
+        return metadata;
+    }
+
+    if (typeof metadata == "number") {
+        return metadata.toString();
+    }
+
+    if (metadata instanceof Array) {
+        return metadata.toString();
+    }
+
+    var keys = [];
+    for (var key in metadata) {
+        if (metadata.hasOwnProperty(key)) {
+            keys.push(key);
+        }
+    }
+    keys.sort();
+    var output = "\n";
+    for (var key in keys) {
+        var value = metadata[keys[key]];
+        if (keys[key] == "L1T") {
+            value = JSON.parse(value);
+        }
+        output += indentation + "<b>" + keys[key] + "</b>: " + dumpMetadata(indentation + "    ", value) + "\n";
+    }
+    return output;
+}
+
+function setPolygonMetadata(metadata) {
+    var infobox = document.getElementById("polygon-data");
+    var selectnone = document.getElementById("unselect_button");
+    if (metadata == null) {
+        infobox.innerHTML = "<i>(none selected)</i>";
+        selectnone.innerHTML = "";
+    }
+    else {
+        infobox.innerHTML = "<h4>Selected polygon metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+        selectnone.innerHTML = "<button onclick='selectNoPolygons()'>Unselect</button>";
+    }
 }
 
 function updateStatus() {
@@ -773,6 +843,7 @@ function switchTables(index) {
 
 <h3 style="margin-bottom: 0px;">Geospatial Polygons</h3>
 <form onsubmit="return false;">
+<div id="unselect_button" style="float: right;"></div>
 <p class="layer_checkbox"><label for="show-polygons"><input id="show-polygons" type="checkbox" checked="false" onclick="togglePolygons('show-polygons');"> Show polygons</label>
 </form>
 
