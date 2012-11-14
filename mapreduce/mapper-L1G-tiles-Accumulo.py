@@ -223,7 +223,7 @@ def makeTiles(geoPicture, inputBands, depth, longpixels, latpixels, numLatitudeS
             outputGeoPicture.metadata = dict(geoPicture.metadata)
             outputGeoPicture.bands = geoPicture.bands + ["MASK"]
 
-            outputGeoPicture.metadata.update({"depth": depth, "longIndex": x, "latIndex": y, "tileName": tileName(*ti), "geoCenter": "lat=%.3f&lng=%.3f&z=10" % (originLat, originLong)})
+            outputGeoPicture.metadata.update({"depth": depth, "longIndex": x, "latIndex": y, "tileName": tileName(*ti), "geoCenter": "lat=%.3f&lng=%.3f&z=12" % (originLat, originLong)})
 
             outputGeoPictures.append(outputGeoPicture)
 
@@ -340,7 +340,28 @@ def makeImage(geoPicture, layer, bands, outputType, minRadiance, maxRadiance):
         else:
             raise NotImplementedError
 
-    return Image.fromarray(numpy.dstack((outputRed, outputGreen, outputBlue, outputMask)))
+    return numpy.dstack((outputRed, outputGreen, outputBlue, outputMask))
+
+def writeOut(outputKey, image, metadata, heartbeat, outputToAccumulo, outputToLocalDirectory, outputDirectoryName, outputToStdOut):
+    if outputToAccumulo:
+        heartbeat.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
+        buff = BytesIO()
+        image.save(buff, "PNG", options="optimize")
+        try:
+            AccumuloInterface.write(outputKey, json.dumps(metadata), buff.getvalue())
+        except jpype.JavaException as exception:
+            raise RuntimeError(exception.stacktrace())
+
+    if outputToLocalDirectory:
+        heartbeat.write("%s     write to local filesystem with path %s/%s.png\n" % (time.strftime("%H:%M:%S"), outputDirectoryName, outputKey))
+        image.save("%s/%s.png" % (outputDirectoryName, outputKey), "PNG", options="optimize")
+        json.dump(metadata, open("%s/%s.metadata" % (outputDirectoryName, outputKey), "w"))
+
+    if outputToStdOut:
+        heartbeat.write("%s     write to standard output with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
+        buff = BytesIO()
+        image.save(buff, "PNG", options="optimize")
+        sys.stdout.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
 
 ################################################################################## entry point
 
@@ -394,7 +415,7 @@ if __name__ == "__main__":
     splineOrder = int(config.get("DEFAULT", "mapper.splineOrder"))
 
     overlap = set(inputBands).intersection(geoPicture.bands)
-    heartbeat.write("%s Bands to process: %s" % repr(overlap))
+    heartbeat.write("%s Bands to process: %s\n" % (time.strftime("%H:%M:%S"), repr(overlap)))
     if len(overlap) == 0:
         raise RuntimeError("There are no bands to process!  Check incomingBandRestriction and outgoingBandRestriction to be sure they're compatible.")
 
@@ -423,6 +444,9 @@ if __name__ == "__main__":
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
 
+    # make the deepest tile images, write them out, and keep track of them for the zoom-outs
+    tiles = {}
+    tileMetadata = {}
     for i, geoPictureTile in enumerate(geoPictureTiles):
         heartbeat.write("%s About to make images for tile %s...\n" % (time.strftime("%H:%M:%S"), geoPictureTile.metadata["tileName"]))
 
@@ -433,25 +457,28 @@ if __name__ == "__main__":
             if image is None: continue
 
             outputKey = "%s-%s-%010d" % (geoPictureTile.metadata["tileName"], config["layer"], geoPictureTile.metadata["timestamp"])
+            tiles[outputKey] = image
+            tileMetadata[outputKey] = geoPictureTile.metadata
 
-            if outputToAccumulo:
-                heartbeat.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
-                buff = BytesIO()
-                image.save(buff, "PNG", options="optimize")
-                try:
-                    AccumuloInterface.write(outputKey, json.dumps(geoPictureTile.metadata), buff.getvalue())
-                except jpype.JavaException as exception:
-                    raise RuntimeError(exception.stacktrace())
+            writeOut(outputKey, Image.fromarray(image), tileMetadata[outputKey], heartbeat, outputToAccumulo, outputToLocalDirectory, outputDirectoryName, outputToStdOut)
 
-            if outputToLocalDirectory:
-                heartbeat.write("%s     write to local filesystem with path %s/%s.png\n" % (time.strftime("%H:%M:%S"), outputDirectoryName, outputKey))
-                image.save("%s/%s.png" % (outputDirectoryName, outputKey), "PNG", options="optimize")
+    # make the zoom-outs, all the way up to depth == 0
+    for thisDepth in xrange(depth, 0, -1):
+        parentToChildMap = makeParentChildMap([x for x in tiles if int(x[1:3]) == thisDepth])
 
-            if outputToStdOut:
-                heartbeat.write("%s     write to standard output with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
-                buff = BytesIO()
-                image.save(buff, "PNG", options="optimize")
-                sys.stdout.write("%s\t%s\n" % (outputKey, base64.b64encode(buff.getvalue())))
+        for parentKey, childKeys in parentToChildMap.items():
+            heartbeat.write("%s About to make parent tile %s consisting of children %s...\n" % (time.strftime("%H:%M:%S"), parentKey, ", ".join(childKeys)))
+
+            childImages = [tiles[x] for x in childKeys]
+            parentImage = zoomOutImage(parentKey, childKeys, childImages, splineOrder)
+
+            tiles[parentKey] = parentImage
+            tileMetadata[parentKey] = tileMetadata[childKeys[0]]
+            for x in "latIndex", "longIndex", "geoCenter", "tileName", "depth":
+                if x in tileMetadata[parentKey]:
+                    del tileMetadata[parentKey][x]
+
+            writeOut(parentKey, Image.fromarray(parentImage), tileMetadata[parentKey], heartbeat, outputToAccumulo, outputToLocalDirectory, outputDirectoryName, outputToStdOut)
 
     heartbeat.write("%s Finished everything; shutting down...\n" % time.strftime("%H:%M:%S"))
 
