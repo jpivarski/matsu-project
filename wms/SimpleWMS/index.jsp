@@ -49,15 +49,21 @@ var points = {};
 var dontReloadPoints = {};
 var oldsize;
 var crossover = 4;
-var showPoints = true;
+var showPoints = <%= giveMeSomething("showPoints", "true", request) %>;
 
 var alldata;
+
+var polygons = {};
+var dontReloadPolygons = {};
+var showPolygons = <%= giveMeSomething("showPolygons", "false", request) %>;
+var olddepth;
 
 var stats;
 var stats_depth = -1;
 var stats_numVisible = 0;
 var stats_numInMemory = 0;
 var stats_numPoints = 0;
+var stats_numPolygons = 0;
 
 var map_canvas;
 var sidebar;
@@ -180,6 +186,8 @@ function initialize() {
 
     getTable();
 
+    document.getElementById("show-polygons").checked = showPolygons;
+
     var latLng = new google.maps.LatLng(lat, lng);
     var options = {zoom: z, center: latLng, mapTypeId: google.maps.MapTypeId.TERRAIN};
     map = new google.maps.Map(document.getElementById("map_canvas"), options);
@@ -220,6 +228,14 @@ function initialize() {
 		}
 		points = {};
 		dontReloadPoints = {};
+
+                for (var key in polygons) {
+                    polygons[key].setMap(null);
+                    delete polygons[key];
+                }
+                polygons = {};
+                dontReloadPolygons = {};
+                setPolygonMetadata(null);
 
 		getEverything();
 	    }
@@ -377,6 +393,7 @@ function drawTable(sortfield, numeric, increasing) {
 
 function getEverything() {
     getOverlays();
+    if (showPolygons) { getPolygons(); }
     if (showPoints) { getLngLatPoints(); }
     else { updateStatus(); }
 }
@@ -407,9 +424,7 @@ function toggleState(name, objname) {
 
 function togglePoints(objname) {
     var obj = document.getElementById(objname);
-    showPoints = !(obj.checked);
-    obj.checked = showPoints;
-
+    showPoints = obj.checked;
     if (showPoints) {
 	getLngLatPoints();
     }
@@ -426,6 +441,25 @@ function togglePoints(objname) {
     }
 }
 
+function togglePolygons(objname) {
+    var obj = document.getElementById(objname);
+    showPolygons = obj.checked;
+    if (showPolygons) {
+        getPolygons();
+    }
+    else {
+        for (var key in polygons) {
+            polygons[key].setMap(null);
+            delete polygons[key];
+        }
+        polygons = {};
+        dontReloadPolygons = {};
+        setPolygonMetadata(null);
+        stats_numPolygons = 0;
+        updateStatus();
+    }
+}
+
 function getOverlays() {
     var bounds = map.getBounds();
     if (!bounds) { return; }
@@ -438,8 +472,12 @@ function getOverlays() {
     var latmin = bounds.getSouthWest().lat();
     var latmax = bounds.getNorthEast().lat();
 
-    [depth, longmin, latmin] = tileIndex(depth, longmin, latmin);
-    [depth, longmax, latmax] = tileIndex(depth, longmax, latmax);
+    var tmp = tileIndex(depth, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(depth, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
 
     var depthPad = depth.pad(2);
     for (var key in overlays) {
@@ -512,8 +550,12 @@ function getLngLatPoints() {
     var latmin = bounds.getSouthWest().lat();
     var latmax = bounds.getNorthEast().lat();
 
-    [depth, longmin, latmin] = tileIndex(10, longmin, latmin);
-    [depth, longmax, latmax] = tileIndex(10, longmax, latmax);
+    var tmp = tileIndex(10, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(10, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
 
     var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
     for (var oldkey in dontReloadPoints) {
@@ -542,32 +584,35 @@ function getLngLatPoints() {
 	    	    var identifier = data[i]["identifier"];
                     if (data[i]["metadata"][scoreField] > minUserScore  &&  data[i]["metadata"][scoreField] < maxUserScore) {
 		        if (!(identifier in points)) {
-			    points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
+                            var t = parseFloat(data[i]["time"]);
+                            if (t >= minUserTime  &&  t <= maxUserTime) {
+			        points[identifier] = new google.maps.Marker({"position": new google.maps.LatLng(data[i]["latitude"], data[i]["longitude"]), "map": map, "flat": true, "icon": circle});
 
-			    google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
-			        var obj = document.getElementById("table-" + ident);
-			        obj.style.background = "#ffff00";
-			        sidebar.scrollTop = obj.offsetTop;
+			        google.maps.event.addListener(points[identifier], "click", function(ident) { return function() {
+			            var obj = document.getElementById("table-" + ident);
+			            obj.style.background = "#ffff00";
+			            sidebar.scrollTop = obj.offsetTop;
 
-			        var countdown = 10;
-			        var state = true;
-			        var callme = function() {
-				    if (state) {
-				        obj.style.background = null;
-				        state = false;
-				    }
-				    else {
-				        obj.style.background = "#ffff00";
-				        state = true;
-				    }
+			            var countdown = 10;
+			            var state = true;
+			            var callme = function() {
+				        if (state) {
+				            obj.style.background = null;
+				            state = false;
+				        }
+				        else {
+				            obj.style.background = "#ffff00";
+				            state = true;
+				        }
 
-				    countdown--;
-				    if (countdown >= 0) { setTimeout(callme, 200); }
-			        };
-			        setTimeout(callme, 200);
+				        countdown--;
+				        if (countdown >= 0) { setTimeout(callme, 200); }
+			            };
+			            setTimeout(callme, 200);
 
-			    } }(identifier));
-		        }
+			        } }(identifier));
+		            }
+                        }
 		    }
                 }
 	    }
@@ -580,8 +625,138 @@ function getLngLatPoints() {
     xmlhttp.send();
 }
 
+function getPolygons() {
+    var bounds = map.getBounds();
+    if (!bounds) { return; }
+
+    var depth = map.getZoom() - 2;
+    if (depth != olddepth) {
+        for (var key in polygons) {
+            polygons[key].setMap(null);
+            delete polygons[key];
+        }
+        polygons = {};
+        dontReloadPolygons = {};
+        setPolygonMetadata(null);
+    }
+    olddepth = depth;
+
+    var longmin = bounds.getSouthWest().lng();
+    var longmax = bounds.getNorthEast().lng();
+    var latmin = bounds.getSouthWest().lat();
+    var latmax = bounds.getNorthEast().lat();
+
+    var tmp = tileIndex(10, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(10, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
+
+    var key = "" + depth + "-" + longmin + "-" + latmin + "-" + longmax + "-" + latmax;
+    for (var oldkey in dontReloadPolygons) {
+	if (key == oldkey) {
+	    return;
+	}
+    }
+    dontReloadPolygons[key] = true;
+
+    var url = "../TileServer/getTile?command=polygons&longmin=" + longmin + "&longmax=" + longmax + "&latmin=" + latmin + "&latmax=" + latmax + "&polygonsTableName=MatsuLevel2Polygons";
+    
+    var xmlhttp = new XMLHttpRequest();
+    xmlhttp.onreadystatechange = function() {
+        if (xmlhttp.readyState == 4  &&  xmlhttp.status == 200) {
+            if (xmlhttp.responseText != "") {
+                var data = JSON.parse(xmlhttp.responseText)["data"];
+                for (var i in data) {
+                    var identifier = parseInt(data[i]["identifier"]);
+                    if (!(identifier in polygons)) {
+                        var t = parseFloat(data[i]["time"]);
+                        if (t >= minUserTime  &&  t <= maxUserTime) {
+                            var rawcoordinates = data[i]["polygon"];
+                            var coordinates = [];
+                            for (var j in rawcoordinates) {
+                                coordinates.push(new google.maps.LatLng(rawcoordinates[j][1], rawcoordinates[j][0]));
+                            }
+
+                            polygons[identifier] = new google.maps.Polygon({"paths": coordinates, "strokeColor": "#ff0000", "strokeWeight": 2.0, "fillColor": "#ff0000", "fillOpacity": 0.0, "clickable": true});
+                            polygons[identifier].setMap(map);
+
+                            google.maps.event.addListener(polygons[identifier], "click", function(polys, ident, metadata) {
+                                return function() {
+                                    for (var otherid in polys) {
+                                        polys[otherid].setOptions({"fillOpacity": 0.0});
+                                    }
+                                    polys[ident].setOptions({"fillOpacity": 0.25});
+                                    setPolygonMetadata(metadata);
+                                };
+                            }(polygons, identifier, data[i]["metadata"]));
+                        }
+                    }
+                }
+            }
+
+            stats_numPolygons = Object.size(polygons);
+            updateStatus();
+        }
+    }
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send();
+}
+
+function selectNoPolygons() {
+    for (var key in polygons) {
+        polygons[key].setOptions({"fillOpacity": 0.0});
+    }
+    setPolygonMetadata(null);
+}
+
+function dumpMetadata(indentation, metadata) {
+    if (typeof metadata == "string") {
+        return metadata;
+    }
+
+    if (typeof metadata == "number") {
+        return metadata.toString();
+    }
+
+    if (metadata instanceof Array) {
+        return metadata.toString();
+    }
+
+    var keys = [];
+    for (var key in metadata) {
+        if (metadata.hasOwnProperty(key)) {
+            keys.push(key);
+        }
+    }
+    keys.sort();
+    var output = "\n";
+    for (var key in keys) {
+        var value = metadata[keys[key]];
+        if (keys[key] == "L1T") {
+            value = JSON.parse(value);
+        }
+        output += indentation + "<b>" + keys[key] + "</b>: " + dumpMetadata(indentation + "    ", value) + "\n";
+    }
+    return output;
+}
+
+function setPolygonMetadata(metadata) {
+    var infobox = document.getElementById("polygon-data");
+    var selectnone = document.getElementById("unselect_button");
+    if (metadata == null) {
+        infobox.innerHTML = "<i>(none selected)</i>";
+        selectnone.innerHTML = "";
+    }
+    else {
+        infobox.innerHTML = "<h4>Selected polygon metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+        selectnone.innerHTML = "<button onclick='selectNoPolygons()'>Unselect</button>";
+    }
+}
+
 function updateStatus() {
-    stats.innerHTML = "<span class='spacer'>Zoom depth: " + stats_depth + "</span><span class='spacer'>Tiles visible: " + stats_numVisible + "</span><span class='spacer'>Tiles in your browser's memory: " + stats_numInMemory + " (counting empty tiles)</span><span class='spacer'>Points: " + stats_numPoints + "</span>";
+    stats.innerHTML = "<span class='spacer'>Zoom depth: " + stats_depth + "</span><span class='spacer'>Tiles visible: " + stats_numVisible + "</span><span class='spacer'>Tiles in your browser's memory: " + stats_numInMemory + " (counting empty tiles)</span><span class='spacer'>Points: " + stats_numPoints + "</span><span class='spacer'>Polygons: " + stats_numPolygons + "</span>";
 }
 
 function switchTables(index) {
@@ -639,7 +814,7 @@ function switchTables(index) {
 <div style="position: absolute; top: 20px; left: 25px; width: 163px;"><div id="slider-time"></div></div>
 </div>
 
-<h3 style="margin-top: 20px;">Layers</h3>
+<h3 style="margin-top: 20px;">Visible Layers</h3>
 <form onsubmit="return false;">
 <p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
 <p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
@@ -656,7 +831,7 @@ function switchTables(index) {
 </select>
 
 <div id="points-stuff" style="margins: 0px; padding: 0px; visibility: visible;">
-<p class="layer_checkbox" onclick="togglePoints('show-points');"><label for="show-points"><input id="show-points" type="checkbox" checked="true"> Show points</label>
+<p class="layer_checkbox"><label for="show-points"><input id="show-points" type="checkbox" checked="true" onclick="togglePoints('show-points');"> Show points</label>
 
 <p style="margin-left: 20px; margin-bottom: 0px;">Filter by "analyticsscore"
 <div style="margin-left: 25px; width: 163px; margin-top: 0px;"><div id="slider-points"></div></div>
@@ -665,6 +840,14 @@ function switchTables(index) {
 </div>
 
 </form>
+
+<h3 style="margin-bottom: 0px;">Geospatial Polygons</h3>
+<form onsubmit="return false;">
+<div id="unselect_button" style="float: right;"></div>
+<p class="layer_checkbox"><label for="show-polygons"><input id="show-polygons" type="checkbox" checked="false" onclick="togglePolygons('show-polygons');"> Show polygons</label>
+</form>
+
+<div id="polygon-data" style="margin-left: 20px;"><i>(none selected)</i></div>
 
 </div>
 
