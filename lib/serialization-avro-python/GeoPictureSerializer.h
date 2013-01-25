@@ -108,7 +108,10 @@ typedef struct {
 } GeoPictureSerializer_GeoPicture;
 
 static int GeoPictureSerializer_GeoPicture_init(GeoPictureSerializer_GeoPicture *self);
+static void GeoPictureSerializer_GeoPicture_dealloc(GeoPictureSerializer_GeoPicture *self);
 static PyObject *GeoPictureSerializer_GeoPicture_serialize(GeoPictureSerializer_GeoPicture *self, PyObject *args);
 static PyObject *GeoPictureSerializer_deserialize(PyObject *args);
+static PyObject *GeoPictureSerializer_GeoPicture_getPicture(GeoPictureSerializer_GeoPicture *self, void *closure);
+static PyObject *GeoPictureSerializer_GeoPicture_setPicture(GeoPictureSerializer_GeoPicture *self, PyObject *value, void *closure);
 
 #endif // GEOPICTURESERIALIZER_H

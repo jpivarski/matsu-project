@@ -347,8 +347,16 @@ def writeOut(outputKey, image, metadata, heartbeat, outputToAccumulo, outputToLo
         heartbeat.write("%s     write to Accumulo with key %s\n" % (time.strftime("%H:%M:%S"), outputKey))
         buff = BytesIO()
         image.save(buff, "PNG", options="optimize")
+        buff = buff.getvalue()
+        heartbeat.write("%s     %d bytes\n" % (time.strftime("%H:%M:%S"), len(buff)))
         try:
-            AccumuloInterface.write(outputKey, json.dumps(metadata), buff.getvalue())
+            AccumuloInterface.write(outputKey, json.dumps(metadata), buff)
+            heartbeat.write("%s     wrote\n" % (time.strftime("%H:%M:%S")))
+        except jpype.JavaException as exception:
+            raise RuntimeError(exception.stacktrace())
+        try:
+            AccumuloInterface.flush()
+            heartbeat.write("%s     flushed\n" % (time.strftime("%H:%M:%S")))
         except jpype.JavaException as exception:
             raise RuntimeError(exception.stacktrace())
 
@@ -390,6 +398,8 @@ if __name__ == "__main__":
     else:
         heartbeat.write("%s About to load a one-line serialized file...\n" % time.strftime("%H:%M:%S"))
         geoPicture = inputOneLine(sys.stdin)
+
+    heartbeat.write("%s Loaded a geoPicture with shape %s\n" % (time.strftime("%H:%M:%S"), repr(geoPicture.picture.shape)))
 
     geoPicture.metadata["timestamp"] = time.mktime(datetime.datetime.strptime(json.loads(geoPicture.metadata["L1T"])["PRODUCT_METADATA"]["START_TIME"], "%Y %j %H:%M:%S").timetuple())
     geoPicture.metadata["analytic"] = "tile-producer"

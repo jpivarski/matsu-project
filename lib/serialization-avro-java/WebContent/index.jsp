@@ -297,7 +297,8 @@ function drawScatter() {
 <b>y1:</b> <input id="y1" type="text" autocomplete="off" size="5" value="">
 <b>x2:</b> <input id="x2" type="text" autocomplete="off" size="5" value="">
 <b>y2:</b> <input id="y2" type="text" autocomplete="off" size="5" value="">
-<input type="submit" value="Update">
+<input type="button" value="Update">
+<input type="button" value="Download JSON" onclick="window.open('../GeoPictureServlet/getData?command=json&amp;x1=' + document.getElementById('x1').value + '&amp;y1=' + document.getElementById('y1').value + '&amp;x2=' + document.getElementById('x2').value + '&amp;y2=' + document.getElementById('y2').value)">
 </form>
 
 <form onsubmit="drawFalseColor(); return false;" style="border-bottom: 1px dashed grey; margin-right: 10px;">

@@ -66,6 +66,30 @@ public class GeoPictureServlet extends HttpServlet {
 		printWriter.close();
 	    }
 
+	    else if (command.equals("json")) {
+		PrintWriter printWriter = response.getWriter();
+
+		try {
+		    int x1 = Integer.parseInt(request.getParameter("x1"));
+		    int y1 = Integer.parseInt(request.getParameter("y1"));
+		    int x2 = Integer.parseInt(request.getParameter("x2"));
+		    int y2 = Integer.parseInt(request.getParameter("y2"));
+
+		    response.setContentType("application/json");
+		    geoPictureSerializer.toJSON(printWriter, x1, y1, x2, y2);
+		}
+		catch (NumberFormatException exception) {
+		    response.setContentType("text/plain");
+		    printWriter.println("Invalid x1, y1, x2, y2.");
+		}
+		catch (NullPointerException exception) {
+		    response.setContentType("text/plain");
+		    printWriter.println("Missing x1, y1, x2, y2.");
+		}
+
+		printWriter.close();
+	    }
+
 	    else if (command.equals("bandNames")) {
 		response.setContentType("text/plain");
 		PrintWriter printWriter = response.getWriter();

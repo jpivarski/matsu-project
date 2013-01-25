@@ -48,7 +48,6 @@ static PyMemberDef GeoPictureSerializer_GeoPicture_members[] = {
   {"schema", T_OBJECT, offsetof(GeoPictureSerializer_GeoPicture, schema), READONLY, "The AVRO schema as a JSON string."},
   {"metadata", T_OBJECT, offsetof(GeoPictureSerializer_GeoPicture, metadata), 0, "The picture metadata as a Python dictionary."},
   {"bands", T_OBJECT, offsetof(GeoPictureSerializer_GeoPicture, bands), 0, "The names of the bands as a sequence of strings."},
-  {"picture", T_OBJECT, offsetof(GeoPictureSerializer_GeoPicture, picture), 0, "The picture data as a 3-D NumPy array: height, width, depth (bands)."},
 
   {NULL}
 };
@@ -59,12 +58,18 @@ static PyMethodDef GeoPictureSerializer_GeoPicture_methods[] = {
   {NULL}
 };
 
+static PyGetSetDef GeoPictureSerializer_GeoPicture_getsetters[] = {
+  {"picture", (getter)GeoPictureSerializer_GeoPicture_getPicture, (setter)GeoPictureSerializer_GeoPicture_setPicture, "The picture data as a 3-D NumPy array: height, width, depth (bands).", NULL},
+
+  {NULL}
+};
+
 static PyTypeObject GeoPictureSerializer_GeoPictureType = {
    PyVarObject_HEAD_INIT(NULL,0)
    "GeoPictureSerializer.GeoPicture",        /*	tp_name */
    sizeof(GeoPictureSerializer_GeoPicture),  /*	tp_basicsize */
    0,                                        /*	tp_itemsize */
-   0,                                        /*	tp_dealloc */
+   (destructor)GeoPictureSerializer_GeoPicture_dealloc,  /*	tp_dealloc */
    0,                                        /*	tp_print */
    0,                         		     /*	tp_getattr */
    0,                         		     /*	tp_setattr */
@@ -89,7 +94,7 @@ static PyTypeObject GeoPictureSerializer_GeoPictureType = {
    0,		               		     /* tp_iternext */
    GeoPictureSerializer_GeoPicture_methods,  /* tp_methods */
    GeoPictureSerializer_GeoPicture_members,  /* tp_members */
-   0,                         		     /* tp_getset */
+   GeoPictureSerializer_GeoPicture_getsetters,  /* tp_getset */
    0,                         		     /* tp_base */
    0,                         		     /* tp_dict */
    0,                         		     /* tp_descr_get */
@@ -130,6 +135,14 @@ static int GeoPictureSerializer_GeoPicture_init(GeoPictureSerializer_GeoPicture 
   self->bands = PyList_New(0);
   self->picture = Py_BuildValue("O", Py_None);
   return 0;
+}
+
+static void GeoPictureSerializer_GeoPicture_dealloc(GeoPictureSerializer_GeoPicture *self) {
+  Py_XDECREF(self->schema);
+  Py_XDECREF(self->metadata);
+  Py_XDECREF(self->bands);
+  Py_XDECREF(self->picture);
+  self->ob_type->tp_free((PyObject*)self);
 }
 
 static const char b64encodeTable[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -686,6 +699,23 @@ static PyObject *GeoPictureSerializer_deserialize(PyObject *self, PyObject *args
 
   NpyIter_Deallocate(iter);
   return output;
+}
+
+static PyObject *GeoPictureSerializer_GeoPicture_getPicture(GeoPictureSerializer_GeoPicture *self, void *closure) {
+  return Py_BuildValue("O", self->picture);
+}
+
+static PyObject *GeoPictureSerializer_GeoPicture_setPicture(GeoPictureSerializer_GeoPicture *self, PyObject *value, void *closure) {
+  if (value == NULL) {
+    Py_DECREF(self->picture);
+    self->picture = Py_BuildValue("O", Py_None);
+  }
+  else {
+    Py_DECREF(self->picture);
+    Py_INCREF(value);
+    self->picture = value;
+  }
+  return 0;
 }
 
 static PyMethodDef GeoPictureSerializer_methods[] = {

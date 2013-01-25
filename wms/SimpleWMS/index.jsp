@@ -711,6 +711,13 @@ function selectNoPolygons() {
     setPolygonMetadata(null);
 }
 
+function prepareMetadata(metadata) {
+    if (typeof metadata["L1T"] == "string") {
+        metadata["L1T"] = JSON.parse(metadata["L1T"]);
+    }
+    return metadata;
+}
+
 function dumpMetadata(indentation, metadata) {
     if (typeof metadata == "string") {
         return metadata;
@@ -734,9 +741,6 @@ function dumpMetadata(indentation, metadata) {
     var output = "\n";
     for (var key in keys) {
         var value = metadata[keys[key]];
-        if (keys[key] == "L1T") {
-            value = JSON.parse(value);
-        }
         output += indentation + "<b>" + keys[key] + "</b>: " + dumpMetadata(indentation + "    ", value) + "\n";
     }
     return output;
@@ -750,7 +754,37 @@ function setPolygonMetadata(metadata) {
         selectnone.innerHTML = "";
     }
     else {
-        infobox.innerHTML = "<h4>Selected polygon metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+        metadata = prepareMetadata(metadata);
+
+        var bandName = null;
+        for (var key in metadata["L1T"]["PRODUCT_METADATA"]) {
+            if (key.substr(0, 4) == "BAND"  &&  key.substr(-10) == "_FILE_NAME") {
+                bandName = metadata["L1T"]["PRODUCT_METADATA"][key].substr(0, 22);
+                break;
+            }
+        }
+
+        if (bandName != null) {
+            var year = bandName.substr(10, 4);
+            var jday = bandName.substr(14, 3);
+            var glusterfs = null;
+            if (bandName.substr(0, 4) == "EO1H") {
+                glusterfs = "/glusterfs/matsu/eo1/hyperion_l1g/" + year + "/" + jday + "/" + bandName + "_HYP_L1G";
+            }
+            else {
+                glusterfs = "/glusterfs/matsu/eo1/ali_l1g/" + year + "/" + jday + "/" + bandName + "_ALI_L1G";
+            }
+
+            var fileList = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:" + glusterfs;
+            var udr = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:" + glusterfs + " .";
+            var rsync = "rsync -avzu guest@opensciencedatacloud.org:" + glusterfs + " .";
+
+            infobox.innerHTML = "<h4 style=\"margin-bottom: 10px;\">Download selected L1 image:</h4><div style=\"font-size: 11px\"><b>List of files from UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + fileList +  "</textarea><b>Download with UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + udr +  "</textarea><b>Download with plain rsync<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + rsync +  "</textarea></div><h4>Selected L1 image metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+        }
+        else {
+            infobox.innerHTML = "<h4>Selected L1 image metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+        }
+
         selectnone.innerHTML = "<button onclick='selectNoPolygons()'>Unselect</button>";
     }
 }

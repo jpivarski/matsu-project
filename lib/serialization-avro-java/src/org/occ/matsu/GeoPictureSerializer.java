@@ -14,6 +14,7 @@ import org.apache.avro.specific.SpecificDatumReader;
 import it.sauronsoftware.base64.Base64InputStream;
 import it.sauronsoftware.base64.Base64;
 
+import java.io.PrintWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -21,6 +22,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.lang.Double;
+import java.util.Map;
+import java.lang.CharSequence;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,6 +59,7 @@ class GeoPictureSerializer extends Object {
 	"                [{\"name\": \"index\", \"type\": \"long\"}, {\"name\": \"strip\", \"type\": \"bytes\"}]}}}\n" +
 	"     ]}");
 
+    Map<CharSequence,CharSequence> metadata;
     String[] bands;
     int height;
     int width;
@@ -98,9 +102,11 @@ class GeoPictureSerializer extends Object {
 	DatumReader<GeoPictureWithMetadata> reader = new SpecificDatumReader<GeoPictureWithMetadata>(GeoPictureWithMetadata.class);
 	GeoPictureWithMetadata p = reader.read(null, d);
 
+	metadata = p.getMetadata();
+
 	bands = new String[p.getBands().size()];
 	int b = 0;
-	for (java.lang.CharSequence band : p.getBands()) {
+	for (CharSequence band : p.getBands()) {
 	    bands[b] = band.toString();
 	    b++;
 	}
@@ -145,6 +151,88 @@ class GeoPictureSerializer extends Object {
 	}
 
 	valid = true;
+    }
+
+    public void toJSON(PrintWriter printWriter, int x1, int y1, int x2, int y2) throws InvalidGeoPictureException {
+	if (!valid) { throw new InvalidGeoPictureException(); }
+
+	if (x1 > x2) {
+	    int tmp = x1;
+	    x1 = x2;
+	    x2 = tmp;
+	}
+	if (y1 > y2) {
+	    int tmp = y1;
+	    y1 = y2;
+	    y2 = tmp;
+	}
+
+	printWriter.print("{\"bands\": ");
+	printWriter.print(this.bandNames());
+
+	printWriter.print(",\n\"metadata\": {");
+	boolean comma = false;
+	for (CharSequence key : this.metadata.keySet()) {
+	    if (comma) {
+		printWriter.print(", ");
+	    } else {
+		comma = true;
+	    }
+
+	    String keyString = key.toString().replace("\\", "\\\"").replace("\"", "\\\"");
+	    String valueString = this.metadata.get(key).toString().replace("\\", "\\\"").replace("\"", "\\\"");
+
+	    printWriter.print(String.format("\"%s\": \"%s\"", keyString, valueString));
+	}
+
+	printWriter.print("},\n\"picture\": [");
+
+	int actualWidth = 0;
+	int actualHeight = 0;
+	boolean icomma = false;
+	for (int i = 0;  i < x2 - x1;  i++) {
+	    if (i < width) {
+		actualWidth++;
+
+		if (icomma) {
+		    printWriter.print(", [");
+		} else {
+		    printWriter.print("[");
+		    icomma = true;
+		}
+
+		boolean jcomma = false;
+		for (int j = 0;  j < y2 - y1;  j++) {
+		    if (j < height) {
+			if (actualWidth == 1) { actualHeight++; }
+
+			if (jcomma) {
+			    printWriter.print(", [");
+			} else {
+			    printWriter.print("[");
+			    jcomma = true;
+			}
+
+			boolean kcomma = false;
+			for (int k = 0;  k < bands.length;  k++) {
+			    if (kcomma) {
+				printWriter.print(",");
+			    } else {
+				kcomma = true;
+			    }
+			    
+			    printWriter.print(data[j + y1][i + x1][k]);
+			}
+
+			printWriter.print("]");
+		    }
+		}
+
+		printWriter.print("]\n");
+	    }
+	}
+
+	printWriter.println(String.format("],\n\"shape\": [%d,%d,%d]}", actualWidth, actualHeight, depth));
     }
 
     public String spectrum(int x1, int y1, int x2, int y2, boolean log) throws IOException, InvalidGeoPictureException {
