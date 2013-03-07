@@ -195,16 +195,26 @@ public class MatsuServlet extends HttpServlet {
     	String key = request.getParameter("key");
     	if (key == null) { return; }
 
-    	scanner.setRange(new Range(key));
+        String timemin = request.getParameter("timemin");
+        if (timemin == null) { timemin = "0000000000"; }
 
+        String timemax = request.getParameter("timemax");
+        if (timemax == null) { timemax = "9999999999"; }
+
+    	scanner.setRange(new Range(key + "-" + timemin, key + "-" + timemax));
+
+        PrintWriter output = response.getWriter();
+        output.print("[");
+        boolean comma = false;
     	for (Entry<Key, Value> entry : scanner) {
     	    String columnName = entry.getKey().getColumnQualifier().toString();
     	    if (columnName.equals("metadata")) {
-                PrintWriter output = response.getWriter();
+                if (comma) { output.print(", "); }
+                comma = true;
                 output.print(entry.getValue().toString());
-    		break;
     	    }
     	}
+        output.print("]");
     }
 
     protected void getImages(HttpServletRequest request, HttpServletResponse response) throws IOException {

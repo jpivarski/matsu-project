@@ -45,6 +45,9 @@ if (rgb) { layers.push("RGB"); }
 if (co2) { layers.push("CO2"); }
 if (flood) { layers.push("flood"); }
 
+var downloadsType = "l1g";
+var uniqueFileNames = {};
+
 var points = {};
 var dontReloadPoints = {};
 var oldsize;
@@ -202,7 +205,7 @@ function initialize() {
     doresize();
     sidebar.addEventListener("DOMAttrModified", doresize);
 
-    minUserTime = 1230789600;    // Jan 1, 2009 00:00:00
+    minUserTime = 1325397600;    // Jan 1, 2012 00:00:00
     maxUserTime = 1357020000;    // Jan 1, 2013 00:00:00
 
     $(function() {
@@ -398,6 +401,18 @@ function getEverything() {
     else { updateStatus(); }
 }
 
+function setDownloadsType(index) {
+    if (index == 0) {
+        downloadsType = "l0";
+    }
+    else if (index == 1) {
+        downloadsType = "l1g";
+    }
+    else if (index == 2) {
+        downloadsType = "l1t";
+    }
+}
+
 function toggleState(name, objname) {
     var obj = document.getElementById(objname);
     var newState = !(obj.checked);
@@ -509,6 +524,90 @@ function getOverlays() {
     stats_numInMemory = 0;
     for (var key in overlays) {
         stats_numInMemory++;
+    }
+}
+
+function updateDownloads() {
+    var bounds = map.getBounds();
+    if (!bounds) { return; }
+
+    var depth = map.getZoom() - 2;
+    if (depth > 10) { depth = 10; }
+
+    var longmin = bounds.getSouthWest().lng();
+    var longmax = bounds.getNorthEast().lng();
+    var latmin = bounds.getSouthWest().lat();
+    var latmax = bounds.getNorthEast().lat();
+
+    var tmp = tileIndex(depth, longmin, latmin);
+    longmin = tmp[1];
+    latmin = tmp[2];
+    tmp = tileIndex(depth, longmax, latmax);
+    longmax = tmp[1];
+    latmax = tmp[2];
+
+    var filelist = document.getElementById("download-filelist");
+    filelist.innerHTML = "(click button to update)";
+
+    var udr = document.getElementById("download-udr");
+    udr.innerHTML = "(click button to update)";
+
+    var rsync = document.getElementById("download-rsync");
+    rsync.innerHTML = "(click button to update)";
+
+    uniqueFileNames = {};
+    for (var longIndex = longmin;  longIndex <= longmax;  longIndex++) {
+        for (var latIndex = latmin;  latIndex <= latmax;  latIndex++) {
+            for (var layerIndex in layers) {
+                var xmlhttp = new XMLHttpRequest();
+                xmlhttp.onreadystatechange = function (XMLHTTP, FILELIST, UDR, RSYNC) { return function () {
+                    if (XMLHTTP.readyState == 4  &&  XMLHTTP.status == 200) {
+	                if (XMLHTTP.responseText != "") {
+	                    var metadatas = JSON.parse(XMLHTTP.responseText);
+	                    for (var i in metadatas) {
+                                var metadata = prepareMetadata(metadatas[i]);
+
+                                var bandName = null;
+                                for (var key in metadata["L1T"]["PRODUCT_METADATA"]) {
+                                    if (key.substr(0, 4) == "BAND"  &&  key.substr(-10) == "_FILE_NAME") {
+                                        bandName = metadata["L1T"]["PRODUCT_METADATA"][key].substr(0, 22);
+                                        break;
+                                    }
+                                }
+
+                                if (bandName != null) {
+                                    var year = bandName.substr(10, 4);
+                                    var jday = bandName.substr(14, 3);
+                                    var fileName = null;
+                                    if (bandName.substr(0, 4) == "EO1H") {
+                                        fileName = "/glusterfs/matsu/eo1/hyperion_" + downloadsType + "/" + year + "/" + jday + "/" + bandName + "_HYP_" + downloadsType.toUpperCase();
+                                    }
+                                    else {
+                                        fileName = "/glusterfs/matsu/eo1/ali_" + downloadsType + "/" + year + "/" + jday + "/" + bandName + "_ALI_" + downloadsType.toUpperCase();
+                                    }
+
+                                    uniqueFileNames[fileName] = 1;
+                                }
+                            }
+
+                            var command = [];
+                            for (var fileName in uniqueFileNames) {
+                                command.push(fileName);
+                            }
+                            if (command.length > 0) {
+                                FILELIST.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:{" + command.join(",") + "}";
+                                UDR.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:{" + command.join(",") + "} .";
+                                RSYNC.innerHTML = "rsync -avzu guest@opensciencedatacloud.org:{" + command.join(",") + "} .";
+                            }
+                        }
+                    }
+                } }(xmlhttp, filelist, udr, rsync);
+                
+                var tileKey = tileName(depth, longIndex, latIndex, layers[layerIndex]);
+                xmlhttp.open("GET", "../TileServer/getTile?command=imageMetadata&key=" + tileKey + "&timemin=" + minUserTime + "&timemax=" + maxUserTime, true);
+                xmlhttp.send();
+            }
+        }
     }
 }
 
@@ -779,7 +878,7 @@ function setPolygonMetadata(metadata) {
             var udr = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:" + glusterfs + " .";
             var rsync = "rsync -avzu guest@opensciencedatacloud.org:" + glusterfs + " .";
 
-            infobox.innerHTML = "<h4 style=\"margin-bottom: 10px;\">Download selected L1 image:</h4><div style=\"font-size: 11px\"><b>List of files from UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + fileList +  "</textarea><b>Download with UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + udr +  "</textarea><b>Download with plain rsync<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + rsync +  "</textarea></div><h4>Selected L1 image metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
+            infobox.innerHTML = "<h4 style=\"margin-bottom: 10px;\">Download selected L1G image:</h4><div style=\"font-size: 11px\"><b>List of files from UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + fileList +  "</textarea><b>Download with UDR<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + udr +  "</textarea><b>Download with plain rsync<b><br><textarea style=\"width: 100%; resize: vertical; min-height: 31px;\" rows=\"1\" cols=\"20\" readonly=\"readonly\">" + rsync +  "</textarea></div><h4>Selected L1 image metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
         }
         else {
             infobox.innerHTML = "<h4>Selected L1 image metadata:</h4><pre>" + dumpMetadata("", metadata) + "</pre>";
@@ -840,10 +939,10 @@ function switchTables(index) {
 
 <h3 style="margin-top: 0px;">Timespan</h3>
 <div style="position: relative; height: 20px; top: -10px;">
-<div style="position: absolute; top: 0px; left: 10px; font-size: 11pt;">2009</div>
-<div style="position: absolute; top: 0px; left: 50px; font-size: 11pt;">2010</div>
-<div style="position: absolute; top: 0px; left: 90px; font-size: 11pt;">2011</div>
-<div style="position: absolute; top: 0px; left: 130px; font-size: 11pt;">2012</div>
+<div style="position: absolute; top: 0px; left: 10px; font-size: 11pt;">2012</div>
+<div style="position: absolute; top: 0px; left: 50px; font-size: 11pt;">Apr</div>
+<div style="position: absolute; top: 0px; left: 90px; font-size: 11pt;">Jul</div>
+<div style="position: absolute; top: 0px; left: 130px; font-size: 11pt;">Oct</div>
 <div style="position: absolute; top: 0px; left: 170px; font-size: 11pt;">2013</div>
 <div style="position: absolute; top: 20px; left: 25px; width: 163px;"><div id="slider-time"></div></div>
 </div>
@@ -853,6 +952,25 @@ function switchTables(index) {
 <p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
 <p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
 <p class="layer_checkbox" onclick="toggleState('flood', 'layer-flood');"><label for="layer-flood" onclick="toggleState('flood', 'layer-flood');"><input id="layer-flood" class="layer-checkbox" type="checkbox" checked="true"> <span style="color: red;">cloud</span>, <span style="color: green;">land</span>, <span style="color: blue;">water</span></label>
+</form>
+
+<h3 style="margin-bottom: 0px;">Get Source Images</h3>
+<form onsubmit="return false;">
+<p class="layer_checkbox"><button onclick="updateDownloads();">Get visible images</button>
+<select id="downloadstype-pulldown" onchange="setDownloadsType(this.selectedIndex);" style="float: right;">
+<option value="l0">Level-0</option>
+<option value="l1g" selected="true">Level-1G</option>
+<option value="l1t">Level-1T</option>
+</select>
+<div style="margin-left: 20px; margin-top: 10px;">
+<div style="font-size: 11px"><b>List all files using UDR<b><br>
+<textarea id="download-filelist" style="width: 100%; resize: vertical; min-height: 31px;" rows="1" cols="20" readonly="readonly">(click button to update)</textarea>
+<b>Download with UDR<b><br>
+<textarea id="download-udr" style="width: 100%; resize: vertical; min-height: 31px;" rows="1" cols="20" readonly="readonly">(click button to update)</textarea>
+<b>Download with plain rsync<b><br>
+<textarea id="download-rsync" style="width: 100%; resize: vertical; min-height: 31px;" rows="1" cols="20" readonly="readonly">(click button to update)</textarea>
+</div>
+</div>
 </form>
 
 <h3 style="margin-bottom: 0px;">Latitude-longitude Points</h3>
