@@ -40,10 +40,12 @@ var z = <%= giveMeSomething("z", "2", request) %>;
 var rgb = <%= giveMeSomething("rgb", "true", request) %>;
 var co2 = <%= giveMeSomething("co2", "false", request) %>;
 var flood = <%= giveMeSomething("flood", "false", request) %>;
+var TOPO_raw = <%= giveMeSomething("TOPO_raw", "false", request) %>;
 var layers = [];
 if (rgb) { layers.push("RGB"); }
 if (co2) { layers.push("CO2"); }
 if (flood) { layers.push("flood"); }
+if (TOPO_raw) { layers.push("TOPO_raw"); }
 
 var downloadsType = "l1g";
 var uniqueFileNames = {};
@@ -511,7 +513,14 @@ function getOverlays() {
             for (var latIndex = latmin;  latIndex <= latmax;  latIndex++) {
 	    	var key = tileName(depth, longIndex, latIndex, layers[i]);
 		if (!(key in overlays)) {
-                    var overlay = new google.maps.GroundOverlay("../TileServer/getTile?command=images&key=" + key + "&timemin=" + minUserTime + "&timemax=" + maxUserTime, tileCorners(depth, longIndex, latIndex));
+                    var overlayUrl = null;
+                    if (layers[i] == "TOPO_raw") {
+                        overlayUrl = "../TileServer/getTile?command=images&key=" + key;
+                    }
+                    else {
+                        overlayUrl = "../TileServer/getTile?command=images&key=" + key + "&timemin=" + minUserTime + "&timemax=" + maxUserTime;
+                    }
+                    var overlay = new google.maps.GroundOverlay(overlayUrl, tileCorners(depth, longIndex, latIndex));
                     overlay.setMap(map);
                     overlays[key] = overlay;
                     numAdded++;
@@ -856,10 +865,12 @@ function setPolygonMetadata(metadata) {
         metadata = prepareMetadata(metadata);
 
         var bandName = null;
-        for (var key in metadata["L1T"]["PRODUCT_METADATA"]) {
-            if (key.substr(0, 4) == "BAND"  &&  key.substr(-10) == "_FILE_NAME") {
-                bandName = metadata["L1T"]["PRODUCT_METADATA"][key].substr(0, 22);
-                break;
+        if ("L1T" in metadata  &&  "PRODUCT_METADATA" in metadata["L1T"]) {
+            for (var key in metadata["L1T"]["PRODUCT_METADATA"]) {
+                if (key.substr(0, 4) == "BAND"  &&  key.substr(-10) == "_FILE_NAME") {
+                    bandName = metadata["L1T"]["PRODUCT_METADATA"][key].substr(0, 22);
+                    break;
+                }
             }
         }
 
@@ -952,6 +963,7 @@ function switchTables(index) {
 <p class="layer_checkbox" onclick="toggleState('RGB', 'layer-RGB');"><label for="layer-RGB" onclick="toggleState('RGB', 'layer-RGB');"><input id="layer-RGB" class="layer-checkbox" type="checkbox" checked="true"> Canonical RGB</label>
 <p class="layer_checkbox" onclick="toggleState('CO2', 'layer-CO2');"><label for="layer-CO2" onclick="toggleState('CO2', 'layer-CO2');"><input id="layer-CO2" class="layer-checkbox" type="checkbox" checked="true"> CO<sub>2</sub></label>
 <p class="layer_checkbox" onclick="toggleState('flood', 'layer-flood');"><label for="layer-flood" onclick="toggleState('flood', 'layer-flood');"><input id="layer-flood" class="layer-checkbox" type="checkbox" checked="true"> <span style="color: red;">cloud</span>, <span style="color: green;">land</span>, <span style="color: blue;">water</span></label>
+<p class="layer_checkbox" onclick="toggleState('TOPO_raw', 'layer-TOPO_raw');"><label for="layer-TOPO_raw" onclick="toggleState('TOPO_raw', 'layer-TOPO_raw');"><input id="layer-TOPO_raw" class="layer-checkbox" type="checkbox" checked="true"> Elevation (insensitive to timespan)</label>
 </form>
 
 <h3 style="margin-bottom: 0px;">Get Source Images</h3>
