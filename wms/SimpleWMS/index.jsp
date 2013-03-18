@@ -966,13 +966,13 @@ function switchTables(index) {
 <p class="layer_checkbox" onclick="toggleState('TOPO_raw', 'layer-TOPO_raw');"><label for="layer-TOPO_raw" onclick="toggleState('TOPO_raw', 'layer-TOPO_raw');"><input id="layer-TOPO_raw" class="layer-checkbox" type="checkbox" checked="true"> Elevation (insensitive to timespan)</label>
 </form>
 
-<h3 style="margin-bottom: 0px;">Get Source Images</h3>
+<h3 style="margin-bottom: 0px;">Commandlines to Get Images</h3>
 <form onsubmit="return false;">
 <p class="layer_checkbox"><button onclick="updateDownloads();">Get visible images</button>
 <select id="downloadstype-pulldown" onchange="setDownloadsType(this.selectedIndex);" style="float: right;">
 <option value="l0">Level-0</option>
 <option value="l1g" selected="true">Level-1G</option>
-<option value="l1t">Level-1T</option>
+<!-- <option value="l1t">Level-1T</option> -->
 </select>
 <div style="margin-left: 20px; margin-top: 10px;">
 <div style="font-size: 11px"><b>List all files using UDR<b><br>
