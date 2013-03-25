@@ -604,9 +604,9 @@ function updateDownloads() {
                                 command.push(fileName);
                             }
                             if (command.length > 0) {
-                                FILELIST.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:{" + command.join(",") + "}";
-                                UDR.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:{" + command.join(",") + "} .";
-                                RSYNC.innerHTML = "rsync -avzu guest@opensciencedatacloud.org:{" + command.join(",") + "} .";
+                                FILELIST.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:\"" + command.join(" ") + "\"";
+                                UDR.innerHTML = "udr rsync -av --stats --progress guest@opensciencedatacloud.org:\"" + command.join(" ") + "\" .";
+                                RSYNC.innerHTML = "rsync -avzu guest@opensciencedatacloud.org:\"" + command.join(" ") + "\" .";
                             }
                         }
                     }
