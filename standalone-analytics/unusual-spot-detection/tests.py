@@ -10,15 +10,15 @@ from PIL import Image
 from cassius import *
 import GeoPictureSerializer
 
-# pictureName = "Australia_Karijini_bigger"
+pictureName = "Australia_Karijini_bigger"
 # pictureName = "fresh_salt_water"
 # pictureName = "PotassiumChloridePlant_topQuarter"
 # pictureName = "NamibiaFloods-EO1A1800722011074110KF"
-pictureName = "GobiDesert01"
+# pictureName = "GobiDesert01"
 picture = GeoPictureSerializer.deserialize(open("/home/pivarski/NOBACKUP/matsu_serialized/%s.serialized" % pictureName))
 
-numberOfClusters = 10
-seedSigmas = 1.0
+numberOfClusters = 20
+seedSigmas = 2.5
 
 def wavelength(bandNumber):
     if bandNumber < 70.5:
@@ -334,3 +334,110 @@ for i in xrange(1, 20):
     print "Growth iteration", i
     grow()
     visualize(i)
+
+################################################
+
+expandedClusterIndex = numpy.empty(bestClusterIndex.shape, dtype=numpy.int32)
+for clusterIndex in xrange(numberOfClusters):
+    selection = bestClusterIndex == clusterIndex
+    ownedPoints = normalizedPixels[selection] - clusterCenters[clusterIndex,:]
+    covarianceMatrix = numpy.cov(ownedPoints.T)
+
+    normalizations = numpy.sqrt(numpy.sum(numpy.square(ownedPoints), axis=1))
+    normalizedDisplacements = numpy.empty(ownedPoints.shape, dtype=numpy.dtype(float))
+    for clusterDimension in xrange(ownedPoints.shape[1]):
+        normalizedDisplacements[:,clusterDimension] = ownedPoints[:,clusterDimension] / normalizations
+
+    lengthOfSigma = numpy.sqrt(numpy.sum(normalizedDisplacements.dot(covarianceMatrix) * normalizedDisplacements, axis=1))
+    significances = normalizations / lengthOfSigma
+
+    expandedClusterIndex[selection] = numpy.where(significances > 5.0, numpy.int32(clusterIndex), numpy.int32(-1))
+
+try:
+    array2d = picture.picture[:,:,picture.bands.index("B016")]
+except ValueError:
+    array2d = picture.picture[:,:,picture.bands.index("B03")]
+lowValue, highValue = numpy.percentile(array2d, [0.0, 100.0])
+values = numpy.array(numpy.maximum(numpy.minimum(((array2d - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
+
+reds = values.copy()
+greens = values.copy()
+blues = values.copy()
+for clusterIndex, color in enumerate(orderedColors):
+    lighterColor = lighten(color)
+
+    if float(clusterPopulations[clusterIndex])/sum(clusterPopulations) < 0.02:
+        selection = mask.copy()
+        selection[mask] = (bestClusterIndex == clusterIndex)
+
+        reds[selection] = lighterColor.r * 255
+        greens[selection] = lighterColor.g * 255
+        blues[selection] = lighterColor.b * 255
+
+output = Image.fromarray(numpy.dstack((reds, greens, blues)))
+output.save(open("%s/clusterIdentity_anomalousClusters.png" % pictureName, "wb"))
+
+reds = values.copy()
+greens = values.copy()
+blues = values.copy()
+for clusterIndex, color in enumerate(orderedColors):
+    lighterColor = lighten(color)
+
+    selection = mask.copy()
+    selection[mask] = (expandedClusterIndex == clusterIndex)
+
+    reds[selection] = lighterColor.r * 255
+    greens[selection] = lighterColor.g * 255
+    blues[selection] = lighterColor.b * 255
+
+output = Image.fromarray(numpy.dstack((reds, greens, blues)))
+output.save(open("%s/clusterIdentity_farFromClusters.png" % pictureName, "wb"))
+    
+################################################
+
+significancePicture = numpy.empty(bestClusterIndex.shape, dtype=numpy.dtype(float))
+for clusterIndex in xrange(numberOfClusters):
+    selection = bestClusterIndex == clusterIndex
+    ownedPoints = normalizedPixels[selection] - clusterCenters[clusterIndex,:]
+    covarianceMatrix = numpy.cov(ownedPoints.T)
+
+    normalizations = numpy.sqrt(numpy.sum(numpy.square(ownedPoints), axis=1))
+    normalizedDisplacements = numpy.empty(ownedPoints.shape, dtype=numpy.dtype(float))
+    for clusterDimension in xrange(ownedPoints.shape[1]):
+        normalizedDisplacements[:,clusterDimension] = ownedPoints[:,clusterDimension] / normalizations
+
+    lengthOfSigma = numpy.sqrt(numpy.sum(normalizedDisplacements.dot(covarianceMatrix) * normalizedDisplacements, axis=1))
+    significances = normalizations / lengthOfSigma
+
+    significancePicture[selection] = significances
+
+lowValue, highValue = numpy.percentile(significancePicture, [0.0, 100.0])
+values = numpy.array(numpy.maximum(numpy.minimum(((significancePicture - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
+shapedValues = numpy.zeros(mask.shape, dtype=numpy.uint8)
+shapedValues[mask] = values
+
+output = Image.fromarray(shapedValues)
+output.save(open("%s/clusterIdentity_significance.png" % pictureName, "wb"))
+
+try:
+    array2d = picture.picture[:,:,picture.bands.index("B016")]
+except ValueError:
+    array2d = picture.picture[:,:,picture.bands.index("B03")]
+lowValue, highValue = numpy.percentile(array2d, [0.0, 100.0])
+values2 = numpy.array(numpy.maximum(numpy.minimum(((array2d - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
+
+reds = values2.copy()
+greens = values2.copy()
+blues = values2.copy()
+for clusterIndex, color in enumerate(orderedColors):
+    lighterColor = lighten(color)
+
+    selection = mask.copy()
+    selection[mask] = (significancePicture > 5.0)
+
+    reds[selection] = 255
+    greens[selection] = 0
+    blues[selection] = 0
+
+output = Image.fromarray(numpy.dstack((reds, greens, blues)))
+output.save(open("%s/clusterIdentity_significantlyFarFromClusters.png" % pictureName, "wb"))
