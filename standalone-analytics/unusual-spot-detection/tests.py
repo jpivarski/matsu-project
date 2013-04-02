@@ -10,14 +10,15 @@ from PIL import Image
 from cassius import *
 import GeoPictureSerializer
 
-pictureName = "Australia_Karijini_bigger"
+# pictureName = "Australia_Karijini_bigger"
 # pictureName = "fresh_salt_water"
 # pictureName = "PotassiumChloridePlant_topQuarter"
 # pictureName = "NamibiaFloods-EO1A1800722011074110KF"
-# pictureName = "GobiDesert01"
+pictureName = "GobiDesert01"
 picture = GeoPictureSerializer.deserialize(open("/home/pivarski/NOBACKUP/matsu_serialized/%s.serialized" % pictureName))
 
-numberOfClusters = 20
+numberOfClusters = 10
+seedSigmas = 1.0
 
 def wavelength(bandNumber):
     if bandNumber < 70.5:
@@ -72,7 +73,7 @@ for bandIndex, bandName in enumerate(picture.bands):
 
 ################################################
 
-def kmeans(clusterCenters, dataset, numberOfIterations=10, allChangeThreshold=1e-3, halfChangeThreshold=1e-5):
+def kmeans(clusterCenters, dataset, numberOfIterations=10, allChangeThreshold=1e-2, halfChangeThreshold=1e-3):
     for counter in xrange(numberOfIterations):
         bestClusterIndex = None
         bestClusterDistance = None
@@ -226,10 +227,13 @@ for clusterIndex in xrange(numberOfClusters):
     lengthOfSigma = numpy.sqrt(numpy.sum(normalizedDisplacements.dot(covarianceMatrix) * normalizedDisplacements, axis=1))
     significances = normalizations / lengthOfSigma
 
-    reducedClusterIndex[selection] = numpy.where(significances < 2.5, numpy.int32(clusterIndex), numpy.int32(-1))
+    reducedClusterIndex[selection] = numpy.where(significances < seedSigmas, numpy.int32(clusterIndex), numpy.int32(-1))
 
-array2d = picture.picture[:,:,picture.bands.index("B016")]
-lowValue, highValue = numpy.percentile(array2d, [0.0, 99.9])
+try:
+    array2d = picture.picture[:,:,picture.bands.index("B016")]
+except ValueError:
+    array2d = picture.picture[:,:,picture.bands.index("B03")]
+lowValue, highValue = numpy.percentile(array2d, [0.0, 100.0])
 values = numpy.array(numpy.maximum(numpy.minimum(((array2d - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
 
 reds = values.copy()
@@ -248,3 +252,85 @@ for clusterIndex, color in enumerate(orderedColors):
 output = Image.fromarray(numpy.dstack((reds, greens, blues)))
 output.save(open("%s/clusterIdentity_reduced.png" % pictureName, "wb"))
 
+################################################
+
+hierarchicalClusters = -numpy.ones(mask.shape, dtype=numpy.int32)
+hierarchicalClusters[mask] = reducedClusterIndex
+
+def visualize(N):
+    try:
+        array2d = picture.picture[:,:,picture.bands.index("B016")]
+    except ValueError:
+        array2d = picture.picture[:,:,picture.bands.index("B03")]
+    lowValue, highValue = numpy.percentile(array2d, [0.0, 100.0])
+    values = numpy.array(numpy.maximum(numpy.minimum(((array2d - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
+    
+    reds = values.copy()
+    greens = values.copy()
+    blues = values.copy()
+    for clusterIndex, color in enumerate(orderedColors):
+        lighterColor = lighten(color)
+
+        reds[hierarchicalClusters == clusterIndex] = lighterColor.r * 255
+        greens[hierarchicalClusters == clusterIndex] = lighterColor.g * 255
+        blues[hierarchicalClusters == clusterIndex] = lighterColor.b * 255
+        
+    output = Image.fromarray(numpy.dstack((reds, greens, blues)))
+    output.save(open("%s/clusterIdentity_reduced_%02d.png" % (pictureName, N), "wb"))
+
+left = numpy.reciprocal(numpy.sqrt(numpy.sum(numpy.square(normalizedPicture - numpy.roll(normalizedPicture, 1, axis=0)), axis=2)))
+right = numpy.reciprocal(numpy.sqrt(numpy.sum(numpy.square(normalizedPicture - numpy.roll(normalizedPicture, -1, axis=0)), axis=2)))
+up = numpy.reciprocal(numpy.sqrt(numpy.sum(numpy.square(normalizedPicture - numpy.roll(normalizedPicture, 1, axis=1)), axis=2)))
+down = numpy.reciprocal(numpy.sqrt(numpy.sum(numpy.square(normalizedPicture - numpy.roll(normalizedPicture, -1, axis=1)), axis=2)))
+
+def grow():
+    unassigned = (hierarchicalClusters == -1)
+
+    bestChoice = None
+    bestAntidiff = None
+    newSelection = numpy.zeros(hierarchicalClusters.shape, dtype=numpy.dtype(bool))
+    for clusterIndex in xrange(numberOfClusters):
+        selection = (hierarchicalClusters == clusterIndex)
+        selectionLeft = numpy.roll(selection, 1, axis=0)
+        selectionRight = numpy.roll(selection, -1, axis=0)
+        selectionUp = numpy.roll(selection, 1, axis=1)
+        selectionDown = numpy.roll(selection, -1, axis=1)
+
+        numpy.logical_and(selectionLeft, unassigned, selectionLeft)
+        numpy.logical_and(selectionRight, unassigned, selectionRight)
+        numpy.logical_and(selectionUp, unassigned, selectionUp)
+        numpy.logical_and(selectionDown, unassigned, selectionDown)
+
+        numpy.logical_or(newSelection, selectionLeft, newSelection)
+        numpy.logical_or(newSelection, selectionRight, newSelection)
+        numpy.logical_or(newSelection, selectionUp, newSelection)
+        numpy.logical_or(newSelection, selectionDown, newSelection)
+
+        antidiffLeft = numpy.zeros(selection.shape, dtype=numpy.dtype(float))
+        antidiffRight = numpy.zeros(selection.shape, dtype=numpy.dtype(float))
+        antidiffUp = numpy.zeros(selection.shape, dtype=numpy.dtype(float))
+        antidiffDown = numpy.zeros(selection.shape, dtype=numpy.dtype(float))
+
+        antidiffLeft[selectionLeft] = left[selectionLeft]
+        antidiffRight[selectionRight] = right[selectionRight]
+        antidiffUp[selectionUp] = up[selectionUp]
+        antidiffDown[selectionDown] = down[selectionDown]
+
+        antidiff = numpy.maximum(numpy.maximum(numpy.maximum(antidiffLeft, antidiffRight), antidiffUp), antidiffDown)
+
+        if bestChoice is None:
+            bestChoice = numpy.zeros(unassigned.shape, dtype=numpy.int32)
+            bestAntidiff = antidiff
+
+        else:
+            better = (antidiff > bestAntidiff)
+            bestChoice[better] = clusterIndex
+            bestAntidiff[better] = antidiff[better]
+
+    hierarchicalClusters[newSelection] = bestChoice[newSelection]
+
+visualize(0)
+for i in xrange(1, 20):
+    print "Growth iteration", i
+    grow()
+    visualize(i)
