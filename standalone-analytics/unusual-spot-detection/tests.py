@@ -38,7 +38,7 @@ for bandIndex in xrange(len(picture.bands)):
     bandName = picture.bands[bandIndex]
     normalizedPixels[:,bandIndex] = maskedPixels[:,bandIndex] / incidentSolar(wavelength(int(bandName[1:])))
 
-pixelTotals = normalizedPixels.sum(axis=1)
+pixelTotals = numpy.sqrt(numpy.square(normalizedPixels).sum(axis=1))
 for bandIndex in xrange(len(picture.bands)):
     normalizedPixels[:,bandIndex] /= pixelTotals
 
@@ -49,7 +49,7 @@ for bandIndex in xrange(len(picture.bands)):
     bandName = picture.bands[bandIndex]
     normalizedPicture[:,:,bandIndex] = picture.picture[:,:,bandIndex] / incidentSolar(wavelength(int(bandName[1:])))
 
-pictureTotals = normalizedPicture.sum(axis=2)
+pictureTotals = numpy.sqrt(numpy.square(normalizedPicture).sum(axis=2))
 for bandIndex in xrange(len(picture.bands)):
     normalizedPicture[:,:,bandIndex] /= pictureTotals
 
@@ -77,10 +77,10 @@ def kmeans(clusterCenters, dataset, numberOfIterations=10, allChangeThreshold=1e
         bestClusterIndex = None
         bestClusterDistance = None
         for clusterIndex in xrange(clusterCenters.shape[0]):
-            distance = numpy.absolute(dataset - clusterCenters[clusterIndex,:]).sum(axis=1)
+            distance = numpy.sqrt(numpy.square(dataset - clusterCenters[clusterIndex,:]).sum(axis=1))
 
             if bestClusterIndex is None:
-                bestClusterIndex = numpy.zeros(distance.shape, dtype=numpy.uint32)
+                bestClusterIndex = numpy.zeros(distance.shape, dtype=numpy.int32)
                 bestClusterDistance = distance
 
             else:
@@ -100,7 +100,7 @@ def kmeans(clusterCenters, dataset, numberOfIterations=10, allChangeThreshold=1e
                 oldCluster = clusterCenters[clusterIndex].copy()
                 clusterCenters[clusterIndex] = dataset[selection].sum(axis=0) / denom
 
-                changes.append(numpy.absolute(clusterCenters[clusterIndex] - oldCluster).sum())
+                changes.append(numpy.sqrt(numpy.square(clusterCenters[clusterIndex] - oldCluster).sum()))
 
         if numberOfIterations > 10:
             print changes
@@ -113,18 +113,18 @@ def kmeans(clusterCenters, dataset, numberOfIterations=10, allChangeThreshold=1e
     return clusterPopulations
 
 def clusterQuality(clsuterCenters, dataset):
-    bestClusterDistance = None
+    bestClusterDistance2 = None
     for clusterIndex in xrange(clusterCenters.shape[0]):
-        distance = numpy.absolute(dataset - clusterCenters[clusterIndex,:]).sum(axis=1)
+        distance2 = numpy.square(dataset - clusterCenters[clusterIndex,:]).sum(axis=1)
 
-        if bestClusterDistance is None:
-            bestClusterDistance = distance
+        if bestClusterDistance2 is None:
+            bestClusterDistance2 = distance2
 
         else:
-            better = (distance < bestClusterDistance)
-            bestClusterDistance[better] = distance[better]
+            better = (distance2 < bestClusterDistance2)
+            bestClusterDistance2[better] = distance2[better]
 
-    return bestClusterDistance.sum()
+    return numpy.sqrt(bestClusterDistance2.sum())
 
 trials = []
 for i in xrange(10):
@@ -166,10 +166,10 @@ draw(Overlay(*plots, ymin=0.0, xlabel="wavelength [nm]", ylabel="weighted, norma
 bestClusterIndex = None
 bestClusterDistance = None
 for index in xrange(clusterCenters.shape[0]):
-    distance = numpy.absolute(normalizedPicture - clusterCenters[index,:])[mask].sum(axis=1)
+    distance = numpy.sqrt(numpy.square(normalizedPicture - clusterCenters[index,:])[mask].sum(axis=1))
 
     if bestClusterIndex is None:
-        bestClusterIndex = numpy.zeros(distance.shape, dtype=numpy.uint32)
+        bestClusterIndex = numpy.zeros(distance.shape, dtype=numpy.int32)
         bestClusterDistance = distance
 
     else:
@@ -209,3 +209,42 @@ clusteredPicture = numpy.zeros(mask.shape, dtype=numpy.uint8)
 clusteredPicture[mask] = numpy.minimum((commonness.max() - commonness)/(commonness.max() - commonness.min()) * 256, 255)
 output = Image.fromarray(clusteredPicture)
 output.save(open("%s/rareness.png" % pictureName, "wb"))
+
+################################################
+
+reducedClusterIndex = numpy.empty(bestClusterIndex.shape, dtype=numpy.int32)
+for clusterIndex in xrange(numberOfClusters):
+    selection = bestClusterIndex == clusterIndex
+    ownedPoints = normalizedPixels[selection] - clusterCenters[clusterIndex,:]
+    covarianceMatrix = numpy.cov(ownedPoints.T)
+
+    normalizations = numpy.sqrt(numpy.sum(numpy.square(ownedPoints), axis=1))
+    normalizedDisplacements = numpy.empty(ownedPoints.shape, dtype=numpy.dtype(float))
+    for clusterDimension in xrange(ownedPoints.shape[1]):
+        normalizedDisplacements[:,clusterDimension] = ownedPoints[:,clusterDimension] / normalizations
+
+    lengthOfSigma = numpy.sqrt(numpy.sum(normalizedDisplacements.dot(covarianceMatrix) * normalizedDisplacements, axis=1))
+    significances = normalizations / lengthOfSigma
+
+    reducedClusterIndex[selection] = numpy.where(significances < 2.5, numpy.int32(clusterIndex), numpy.int32(-1))
+
+array2d = picture.picture[:,:,picture.bands.index("B016")]
+lowValue, highValue = numpy.percentile(array2d, [0.0, 99.9])
+values = numpy.array(numpy.maximum(numpy.minimum(((array2d - lowValue) / (highValue - lowValue)) * 256, 255), 0), dtype=numpy.uint8)
+
+reds = values.copy()
+greens = values.copy()
+blues = values.copy()
+for clusterIndex, color in enumerate(orderedColors):
+    lighterColor = lighten(color)
+
+    selection = mask.copy()
+    selection[mask] = (reducedClusterIndex == clusterIndex)
+
+    reds[selection] = lighterColor.r * 255
+    greens[selection] = lighterColor.g * 255
+    blues[selection] = lighterColor.b * 255
+
+output = Image.fromarray(numpy.dstack((reds, greens, blues)))
+output.save(open("%s/clusterIdentity_reduced.png" % pictureName, "wb"))
+
