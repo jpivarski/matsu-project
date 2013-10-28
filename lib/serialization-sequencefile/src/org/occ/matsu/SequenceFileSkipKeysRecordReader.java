@@ -25,9 +25,6 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
     private long end;
     boolean more = true;
 
-    boolean restrictBands;
-    List<String> restrictBandsTo;
-
     public SequenceFileSkipKeysRecordReader() { }
 
     public void initialize(InputSplit split, TaskAttemptContext context) throws IOException {
@@ -49,30 +46,6 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
 
         start = reader.getPosition();
         more = start < end;
-
-        String stringRestrictBands = configuration.get("org.occ.matsu.restrictBands");
-        if (stringRestrictBands == null) {
-            restrictBands = false;
-        } else {
-            restrictBands = (stringRestrictBands.toLowerCase().equals("true"));
-        }
-
-        if (restrictBands) {
-            String jsonRestrictBandsTo = configuration.get("org.occ.matsu.restrictBandsTo");
-            restrictBandsTo = new ArrayList<String>();
-            restrictBandsTo.add("metadata");
-            restrictBandsTo.add("bands");
-            restrictBandsTo.add("shape");
-
-            JSONArray array = ((JSONArray)(JSONValue.parse(jsonRestrictBandsTo)));
-            if (array == null) {
-                throw new IOException("Cannot parse org.occ.matsu.restrictBandsTo.  Be sure to quote it like this: org.occ.matsu.restrictBandsTo='[\"B01\",\"B02\",\"B03\"]'");
-            }
-
-            for (Object item : array) {
-                restrictBandsTo.add(item.toString());
-            }
-        }
     }
 
     public Class getKeyClass() { return reader.getKeyClass(); }
@@ -86,11 +59,7 @@ public class SequenceFileSkipKeysRecordReader implements RecordReader<Text, Text
         boolean remaining = reader.next(key);
 
         if (remaining) {
-            if (!restrictBands  ||  restrictBandsTo.contains(key.toString())) {
-                reader.getCurrentValue(value);
-            } else {
-                value.set("EMPTY");
-            }
+            reader.getCurrentValue(value);
         }
         if (pos >= end  &&  reader.syncSeen()) {
             more = false;

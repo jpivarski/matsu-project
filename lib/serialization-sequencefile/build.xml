@@ -1,5 +1,7 @@
 <project default="jar">
-    <property file="../../buildconfig.ini" />
+    <!-- <property file="../../buildconfig.ini" /> -->
+    <!-- <property name="jars.hadoop.core" value="/usr/lib/hadoop-0.20-mapreduce/hadoop-core.jar"/> -->
+    <!-- <property name="jars.json_simple" value="/home/pivarski/matsu-project/lib/serialization-sequencefile/lib/json-simple-1.1.1.jar"/> -->
 
     <target name="clean">
         <delete dir="build" />
@@ -14,8 +16,16 @@
 		<!-- <pathelement location="/usr/lib/hadoop/client/hadoop-mapreduce-client-core-2.0.0-cdh4.0.1.jar" /> -->
 		<!-- <pathelement location="/usr/lib/hadoop/lib/json-simple-1.1.jar" /> -->
 
-                <pathelement location="${jars.hadoop.core}" />
-                <pathelement location="${jars.json_simple}" />
+                <!-- <pathelement location="${jars.hadoop.core}" /> -->
+                <!-- <pathelement location="${jars.json_simple}" /> -->
+
+                <pathelement location="/usr/lib/hadoop/hadoop-common.jar"/>
+                <pathelement location="/usr/lib/hadoop/hadoop-auth.jar"/>
+                <pathelement location="/usr/lib/hadoop/hadoop-annotations.jar"/>
+                <pathelement location="/usr/lib/hadoop-0.20-mapreduce/hadoop-core.jar"/>
+                <pathelement location="/usr/lib/hadoop-0.20-mapreduce/hadoop-tools.jar"/>
+                <pathelement location="/usr/lib/hadoop-0.20-mapreduce/hadoop-test.jar"/>
+                <pathelement location="/home/pivarski/matsu-project/lib/serialization-sequencefile/lib/json-simple-1.1.1.jar"/>
 
             </classpath>
         </javac>
@@ -35,11 +45,11 @@
             <!-- <zipfileset src="/usr/lib/hadoop/lib/log4j-1.2.15.jar" includes="**/*.class" /> -->
             <!-- <zipfileset src="/usr/lib/hadoop/lib/json-simple-1.1.jar" includes="**/*.class" /> -->
 
-            <zipfileset src="${jars.hadoop.core}" includes="**/*.class" />
-            <zipfileset src="${jars.hadoop.lib.commons.logging_api}" includes="**/*.class" />
-            <zipfileset src="${jars.hadoop.lib.commons.configuration}" includes="**/*.class" />
-            <zipfileset src="${jars.hadoop.lib.commons.lang}" includes="**/*.class" />
-            <zipfileset src="${jars.json_simple}" includes="**/*.class" />
+            <!-- <zipfileset src="${jars.hadoop.core}" includes="**/*.class" /> -->
+            <!-- <zipfileset src="${jars.hadoop.lib.commons.logging_api}" includes="**/*.class" /> -->
+            <!-- <zipfileset src="${jars.hadoop.lib.commons.configuration}" includes="**/*.class" /> -->
+            <!-- <zipfileset src="${jars.hadoop.lib.commons.lang}" includes="**/*.class" /> -->
+            <!-- <zipfileset src="${jars.json_simple}" includes="**/*.class" /> -->
 
         </jar>
     </target>
